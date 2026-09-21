@@ -1,5 +1,96 @@
 import { callModel, LLMProvider, PostAnalysisResult, ContributionResult, CommentGenerationResult, LLMStepDebug } from "@/lib/llm";
 
+const BANNED_CLICHES = [
+  "couldn't agree more", "couldnt agree more", "well said", "love this", "great point",
+  "this is so important", "this really resonates", "let that sink in", "here's the thing",
+  "heres the thing", "what most people miss", "the hard truth", "spot on", "absolutely",
+  "so true", "couldn't have said it better", "couldnt have said it better", "thanks for sharing",
+  "such a great reminder", "one thing that stands out to me", "this speaks to",
+  "there's something really interesting about", "theres something really interesting about",
+  "it's not x, it's y", "its not x, its y", "the real x is", "at the end of the day",
+  "this is a powerful reminder that", "the biggest lesson here is", "the key takeaway is",
+  "that's where the magic happens", "thats where the magic happens", "that's the difference between",
+  "thats the difference between",
+];
+
+const FORMULAIC_PATTERNS = [
+  /it'?s not .+, it'?s .+/i,
+  /.+ isn'?t about .+, it'?s about .+/i,
+  /the real .+ is/i,
+  /at the end of the day/i,
+  /this is a powerful reminder that/i,
+  /the biggest lesson here is/i,
+  /the key takeaway is/i,
+  /that'?s where the magic happens/i,
+  /that'?s the difference between/i,
+  /one thing that stands out to me/i,
+  /this speaks to/i,
+  /there'?s something really interesting about/i,
+];
+
+function validateComment(comment: string, contribution: ContributionResult, postText: string): { valid: boolean; issues: string[] } {
+  const issues: string[] = [];
+  const lower = comment.toLowerCase();
+
+  // Check banned clichés
+  for (const cliche of BANNED_CLICHES) {
+    if (lower.includes(cliche)) {
+      issues.push(`Contains banned cliché: "${cliche}"`);
+    }
+  }
+
+  // Check formulaic patterns
+  for (const pattern of FORMULAIC_PATTERNS) {
+    if (pattern.test(comment)) {
+      issues.push(`Contains formulaic pattern: ${pattern.source}`);
+    }
+  }
+
+  // Length check: max 1.5 sentences, ~22 words
+  const words = comment.split(/\s+/).filter(Boolean).length;
+  const sentenceCount = comment.split(/[.!?]+/).filter((s) => s.trim().length > 0).length;
+  
+  if (sentenceCount > 2 || (sentenceCount === 2 && words > 22) || words > 28) {
+    issues.push(`Exceeds length limit: ${sentenceCount} sentences, ${words} words (max 1.5 sentences, ~22 words)`);
+  }
+
+  // Basic angle adherence: check if angleExplanation key concepts appear
+  if (contribution.angleExplanation) {
+    const angleKeywords = contribution.angleExplanation
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(w => w.length > 4)
+      .slice(0, 5);
+    
+    const hasAngleOverlap = angleKeywords.some(kw => lower.includes(kw));
+    if (!hasAngleOverlap && angleKeywords.length > 0) {
+      issues.push(`Comment may not follow selected angle (${contribution.selectedAngle})`);
+    }
+  }
+
+  // Topic hijack check for personalizationLevel 0
+  if (contribution.personalizationLevel === 0 && contribution.topicHijackRisk) {
+    const techTerms = ["automation", "ai tool", "software", "api", "code", "script", "workflow", "integration", "backend", "saas"];
+    for (const term of techTerms) {
+      if (lower.includes(term)) {
+        issues.push(`Topic hijack detected: contains "${term}" but personalizationLevel=0 and topicHijackRisk=true`);
+      }
+    }
+  }
+
+  // Authenticity check: first-person claims without context
+  const firstPersonClaims = ["i've seen", "i have seen", "in my experience", "my clients", "my projects", "i've worked", "i worked"];
+  if (contribution.personalizationLevel === 0) {
+    for (const claim of firstPersonClaims) {
+      if (lower.includes(claim)) {
+        issues.push(`Invented personal experience detected: "${claim}" (personalizationLevel=0)`);
+      }
+    }
+  }
+
+  return { valid: issues.length === 0, issues };
+}
+
 export async function generateCommentCandidate(
   postText: string,
   platform: string,
@@ -171,7 +262,7 @@ Never use phrases such as:
 "Spot on"
 "Absolutely"
 "So true"
-"Couldn’t have said it better"
+"Couldn't have said it better"
 "Thanks for sharing"
 "Such a great reminder"
 
@@ -248,39 +339,54 @@ ORIGINAL POST TEXT:
 ${postText}
 """`;
 
-  const response = await callModel(provider, model, {
-    systemPrompt,
-    userPrompt,
-    temperature: 0.4,
-    responseFormat: "json",
-  });
+  let lastResponse = "";
+  let attempts = 0;
+  const maxAttempts = 3;
 
-  let rawComment = "";
-  if (response.parsedJson?.comment) {
-    rawComment = response.parsedJson.comment;
-  } else {
-    rawComment = response.text.replace(/```json\n?|\n?```/g, "").replace(/^"|"$/g, "").trim();
+  while (attempts < maxAttempts) {
+    attempts++;
+    
+    const response = await callModel(provider, model, {
+      systemPrompt,
+      userPrompt: attempts === 1 ? userPrompt : `${userPrompt}\n\nPREVIOUS ATTEMPT FAILED VALIDATION:\n${lastResponse}\n\nFix the issues above and try again.`,
+      temperature: 0.15,
+      responseFormat: "json",
+    });
+
+    if (!response.parsedJson?.comment) {
+      lastResponse = `Failed to parse JSON: ${response.text.slice(0, 300)}`;
+      continue;
+    }
+
+    const rawComment = response.parsedJson.comment.trim();
+    const validation = validateComment(rawComment, contribution, postText);
+
+    if (validation.valid) {
+      const words = rawComment.split(/\s+/).filter(Boolean).length;
+      const sentences = rawComment.split(/[.!?]+/).filter((s: string) => s.trim().length > 0).length;
+
+      const parsedResult: CommentGenerationResult = {
+        comment: rawComment,
+        wordCount: words,
+        sentenceCount: sentences,
+      };
+
+      const debug: LLMStepDebug = {
+        stepIndex: 3,
+        stepName: "Candidate Comment Generation",
+        agentName: "Comment Candidate Generator Agent",
+        systemPrompt,
+        userPrompt: attempts === 1 ? userPrompt : `${userPrompt}\n\n[RETRY ${attempts}]`,
+        rawResponseText: response.text,
+        parsedOutput: parsedResult,
+        executionTimeMs: Date.now() - startTime,
+      };
+
+      return { result: parsedResult, debug };
+    }
+
+    lastResponse = validation.issues.join("; ");
   }
 
-  const words = rawComment.split(/\s+/).filter(Boolean).length;
-  const sentences = rawComment.split(/[.!?]+/).filter((s) => s.trim().length > 0).length;
-
-  const parsedResult: CommentGenerationResult = {
-    comment: rawComment,
-    wordCount: words,
-    sentenceCount: sentences,
-  };
-
-  const debug: LLMStepDebug = {
-    stepIndex: 3,
-    stepName: "Candidate Comment Generation",
-    agentName: "Comment Candidate Generator Agent",
-    systemPrompt,
-    userPrompt,
-    rawResponseText: response.text,
-    parsedOutput: parsedResult,
-    executionTimeMs: Date.now() - startTime,
-  };
-
-  return { result: parsedResult, debug };
+  throw new Error(`CommentGenerator: Failed to generate valid comment after ${maxAttempts} attempts. Last issues: ${lastResponse}`);
 }

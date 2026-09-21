@@ -46,9 +46,21 @@ export interface PostAnalysisResult {
   };
 }
 
+export type SkipReasonCode =
+  | "PURE_LIFESTYLE_NO_HOOK"
+  | "PURE_PROMOTIONAL_NO_HOOK"
+  | "NO_DISCUSSION_SURFACE"
+  | "ONLY_SUMMARY_ECHO_POSSIBLE"
+  | "REQUIRES_FABRICATION"
+  | "TOPIC_HIJACK_RISK"
+  | "NO_GENUINE_CONTRIBUTION"
+  | "POST_TOO_SHORT"
+  | "INSUFFICIENT_CONTEXT";
+
 export interface ContributionResult {
   shouldSkip: boolean;
   skipReason?: string;
+  skipReasonCode?: SkipReasonCode;
   selectedAngle?:
     | "personal_experience"
     | "relevant_observation"
@@ -116,6 +128,8 @@ export interface PipelineResult {
     platform: PlatformType;
     modelUsed: string;
     providerUsed: LLMProvider;
+    criticModelUsed?: string;
+    criticProviderUsed?: LLMProvider;
     executionTimeMs: number;
   };
 }

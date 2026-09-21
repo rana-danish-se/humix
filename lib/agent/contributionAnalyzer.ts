@@ -128,6 +128,7 @@ Return JSON with EXACTLY this structure:
 {
   "shouldSkip": boolean,
   "skipReason": "Specific explanation if shouldSkip is true, otherwise empty string",
+  "skipReasonCode": "ONE OF: PURE_LIFESTYLE_NO_HOOK | PURE_PROMOTIONAL_NO_HOOK | NO_DISCUSSION_SURFACE | ONLY_SUMMARY_ECHO_POSSIBLE | REQUIRES_FABRICATION | TOPIC_HIJACK_RISK | NO_GENUINE_CONTRIBUTION | POST_TOO_SHORT | INSUFFICIENT_CONTEXT",
   "selectedAngle": "one of the available angles above, or null if shouldSkip",
   "angleExplanation": "Brief explanation of the NEW added angle or nuance to contribute. MUST NOT summarize, restate, or paraphrase the post's core idea or claims.",
   "personalizationLevel": 0 | 1 | 2 | 3,
@@ -163,13 +164,35 @@ ${postText}
     responseFormat: "json",
   });
 
-  const parsed: ContributionResult = response.parsedJson || {
-    shouldSkip: false,
-    selectedAngle: "relevant_observation",
-    angleExplanation: "Adding a practical observation.",
-    personalizationLevel: 0,
-    topicHijackRisk: false,
-  };
+  if (!response.parsedJson) {
+    throw new Error(`ContributionAnalyzer: Failed to parse JSON response. Raw: ${response.text.slice(0, 500)}`);
+  }
+
+  const parsed: ContributionResult = response.parsedJson;
+
+  // Programmatic skip reason code assignment
+  if (parsed.shouldSkip && parsed.skipReason) {
+    const reason = parsed.skipReason.toLowerCase();
+    if (reason.includes("lifestyle") || reason.includes("personal moment") || reason.includes("no discussion surface")) {
+      parsed.skipReasonCode = "PURE_LIFESTYLE_NO_HOOK";
+    } else if (reason.includes("promotional") || reason.includes("announcement") || reason.includes("marketing")) {
+      parsed.skipReasonCode = "PURE_PROMOTIONAL_NO_HOOK";
+    } else if (reason.includes("no discussion") || reason.includes("no hook") || reason.includes("no surface")) {
+      parsed.skipReasonCode = "NO_DISCUSSION_SURFACE";
+    } else if (reason.includes("summary") || reason.includes("echo") || reason.includes("paraphrase") || reason.includes("generic praise")) {
+      parsed.skipReasonCode = "ONLY_SUMMARY_ECHO_POSSIBLE";
+    } else if (reason.includes("fabricat") || reason.includes("invent") || reason.includes("fake")) {
+      parsed.skipReasonCode = "REQUIRES_FABRICATION";
+    } else if (reason.includes("hijack") || reason.includes("topic") || reason.includes("tech") || reason.includes("ai")) {
+      parsed.skipReasonCode = "TOPIC_HIJACK_RISK";
+    } else if (reason.includes("no genuine") || reason.includes("no contribution") || reason.includes("no value")) {
+      parsed.skipReasonCode = "NO_GENUINE_CONTRIBUTION";
+    } else if (reason.includes("short") || reason.includes("insufficient")) {
+      parsed.skipReasonCode = "INSUFFICIENT_CONTEXT";
+    } else {
+      parsed.skipReasonCode = "NO_GENUINE_CONTRIBUTION";
+    }
+  }
 
   const isTechPost =
     analysis.postType === "ai_tech" ||
@@ -179,7 +202,17 @@ ${postText}
     analysis.subject.toLowerCase().includes("code") ||
     analysis.subject.toLowerCase().includes("ai");
 
-  if (!isTechPost && parsed.relevantContextSnippet?.toLowerCase().match(/ai|automation|software|code|api/)) {
+  // Fix: If tech hijack detected in angleExplanation (not just snippet), escalate
+  if (!isTechPost && parsed.angleExplanation?.toLowerCase().match(/ai|automation|software|code|api|algorithm|machine learning/)) {
+    parsed.topicHijackRisk = true;
+    parsed.skipReasonCode = "TOPIC_HIJACK_RISK";
+    parsed.shouldSkip = true;
+    parsed.skipReason = "Selected angle hijacks topic to tech/AI despite non-tech post";
+    parsed.selectedAngle = undefined;
+    parsed.angleExplanation = undefined;
+    parsed.personalizationLevel = 0;
+    parsed.relevantContextSnippet = undefined;
+  } else if (!isTechPost && parsed.relevantContextSnippet?.toLowerCase().match(/ai|automation|software|code|api/)) {
     parsed.topicHijackRisk = true;
     parsed.personalizationLevel = 0;
     parsed.relevantContextSnippet = undefined;

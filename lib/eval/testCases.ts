@@ -182,4 +182,127 @@ export const EVAL_TEST_CASES: TestCase[] = [
       "Couldn't agree more",
     ],
   },
+  {
+    id: "TC-16",
+    name: "Adversarial: Post Designed to Trigger AI Summary",
+    category: "Adversarial / Summary Trap",
+    platform: "LinkedIn",
+    postText:
+      "The single most important thing in business is cash flow. Everything else is noise. If you run out of cash, you're dead. So watch your cash flow like a hawk.",
+    expectedStatus: "PASS",
+    notes:
+      "Post states obvious truth. System must NOT summarize ('Cash flow is important'). Must add specific nuance (e.g., 'The lag between revenue recognition and actual cash receipt is what kills growing companies').",
+    prohibitKeywords: ["cash flow is important", "watch your cash", "couldn't agree more", "so true"],
+  },
+  {
+    id: "TC-17",
+    name: "Adversarial: Personal Story with Tech Adjacent Keywords",
+    category: "Adversarial / Hijack Trap",
+    platform: "LinkedIn",
+    postText:
+      "My daughter built her first website this weekend using a no-code tool. She's 12 and so proud. The joy of creating something from nothing!",
+    expectedStatus: "PASS",
+    expectedPersonalizationLevel: 0,
+    notes:
+      "Contains 'website', 'no-code', 'tool' - must NOT hijack into tech commentary. Should comment as a parent/human about pride/joy of creation.",
+    prohibitKeywords: ["automation", "AI", "software", "developer", "code", "API", "tech stack"],
+  },
+  {
+    id: "TC-18",
+    name: "Adversarial: Controversial Take Requiring Nuanced Disagreement",
+    category: "Adversarial / Disagreement",
+    platform: "Reddit",
+    postText:
+      "Agile is dead. All it does is create meetings about meetings. Just ship code and talk to users directly.",
+    expectedStatus: "PASS",
+    notes:
+      "Should offer respectful disagreement with specific nuance (e.g., 'The ceremonies are the problem, not the principles. Lightweight kanban works where scrum fails'). NOT generic agreement.",
+    prohibitKeywords: ["couldn't agree more", "spot on", "well said", "agile is dead"],
+  },
+  {
+    id: "TC-19",
+    name: "Adversarial: Very Short Post (Edge Case)",
+    category: "Adversarial / Edge Case",
+    platform: "Reddit",
+    postText:
+      "Hiring is broken.",
+    expectedStatus: "SKIP",
+    notes:
+      "Too short, no discussion surface. Must SKIP with appropriate skipReasonCode.",
+  },
+  {
+    id: "TC-20",
+    name: "Adversarial: Post with Fake Stats to Test Hallucination Resistance",
+    category: "Adversarial / Hallucination",
+    platform: "LinkedIn",
+    postText:
+      "Our internal study of 500 companies shows that 73% of teams using microservices regret it within 18 months. The complexity tax is real.",
+    expectedStatus: "PASS",
+    expectedPersonalizationLevel: 1,
+    notes:
+      "Post cites specific (likely fabricated) stats. Comment must NOT repeat or validate the stats. Must comment on the general tension or tradeoff without citing numbers.",
+    prohibitKeywords: ["73%", "500 companies", "18 months", "internal study"],
+  },
+  {
+    id: "TC-21",
+    name: "Adversarial: Coaching Post with Actionable Advice",
+    category: "Adversarial / Coach Post",
+    platform: "LinkedIn",
+    postText:
+      "Stop setting goals. Set systems instead. Goals are for direction; systems are for progress. James Clear said it best.",
+    expectedStatus: "PASS",
+    notes:
+      "References James Clear / Atomic Habits. Must NOT summarize the quote. Must add practical observation about systems vs goals in specific context.",
+    prohibitKeywords: ["james clear", "atomic habits", "goals are for direction", "systems are for progress"],
+  },
+  {
+    id: "TC-22",
+    name: "Adversarial: Founder Vulnerability Post",
+    category: "Adversarial / Personal Story",
+    platform: "LinkedIn",
+    postText:
+      "I almost shut down my company last year. $40k in the bank, payroll due Friday. We got a check Thursday. The anxiety changes you.",
+    expectedStatus: "PASS",
+    expectedPersonalizationLevel: 1,
+    notes:
+      "Vulnerable founder story. Must respond with empathy + relevant founder perspective (level 1), NOT tech solutions. No 'automation would help'.",
+    prohibitKeywords: ["automation", "AI", "software", "tool", "platform"],
+  },
+  {
+    id: "TC-23",
+    name: "Adversarial: Meta Post About Commenting",
+    category: "Adversarial / Meta",
+    platform: "LinkedIn",
+    postText:
+      "The best comments on LinkedIn aren't the long thoughtful ones. They're the short specific ones that show you actually read the post.",
+    expectedStatus: "PASS",
+    expectedPersonalizationLevel: 0,
+    notes:
+      "Meta post about commenting. Comment must be self-aware and meta, showing you read it. Short, specific, about commenting behavior.",
+    prohibitKeywords: ["couldn't agree more", "great point", "well said"],
+  },
+  {
+    id: "TC-24",
+    name: "Adversarial: Platform-Specific Style (Reddit)",
+    category: "Adversarial / Platform Convention",
+    platform: "Reddit",
+    postText:
+      "Anyone else find that 'senior' devs with 10 years exp often write worse code than mid-levels who actually care?",
+    expectedStatus: "PASS",
+    notes:
+      "Reddit style: direct, conversational, slightly opinionated. No LinkedIn polish. Should engage with the observation directly.",
+    prohibitKeywords: ["I couldn't agree more", "this is so important", "great insight", "thought leadership"],
+  },
+  {
+    id: "TC-25",
+    name: "Adversarial: Self-Promotion Trap Post",
+    category: "Adversarial / Self-Promo Trap",
+    platform: "LinkedIn",
+    postText:
+      "What's the biggest bottleneck in your content creation workflow right now?",
+    expectedStatus: "PASS",
+    notes:
+      "Question post inviting discussion. Must NOT pivot to promoting user's services/tools. Answer as a peer with genuine observation.",
+    prohibitKeywords: ["my tool", "my service", "my platform", "I built", "check out", "DM me"],
+  },
 ];

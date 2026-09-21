@@ -111,17 +111,11 @@ ${postText}
     responseFormat: "json",
   });
 
-  const parsed: PostAnalysisResult = response.parsedJson || {
-    coreIdea: "General post observation",
-    subject: "Business/Social media post",
-    authorIntention: "Sharing perspective",
-    postType: "founder_insight",
-    tone: "Conversational",
-    emotionalContext: "Neutral",
-    claims: [postText.slice(0, 100)],
-    implicitIdeas: [],
-    potentialContributionOpportunities: ["General comment"],
-  };
+  if (!response.parsedJson) {
+    throw new Error(`PostAnalyzer: Failed to parse JSON response. Raw: ${response.text.slice(0, 500)}`);
+  }
+
+  const parsed: PostAnalysisResult = response.parsedJson;
 
   const debug: LLMStepDebug = {
     stepIndex: 1,

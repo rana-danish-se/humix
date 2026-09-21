@@ -1,5 +1,56 @@
 import { callModel, LLMProvider, PostAnalysisResult, ContributionResult, QualityCriticResult, LLMStepDebug } from "@/lib/llm";
 
+function calculateTextSimilarity(text1: string, text2: string): number {
+  const normalize = (t: string) => t.toLowerCase().replace(/[^\w\s]/g, "").split(/\s+/).filter(w => w.length > 2);
+  const words1 = new Set(normalize(text1));
+  const words2 = new Set(normalize(text2));
+  
+  if (words1.size === 0 || words2.size === 0) return 0;
+  
+  const intersection = new Set([...words1].filter(w => words2.has(w)));
+  const union = new Set([...words1, ...words2]);
+  
+  return intersection.size / union.size; // Jaccard similarity
+}
+
+function calculateNgramOverlap(text1: string, text2: string, n: number = 3): number {
+  const getNgrams = (t: string) => {
+    const words = t.toLowerCase().replace(/[^\w\s]/g, "").split(/\s+/).filter(w => w.length > 0);
+    const ngrams = new Set<string>();
+    for (let i = 0; i <= words.length - n; i++) {
+      ngrams.add(words.slice(i, i + n).join(" "));
+    }
+    return ngrams;
+  };
+  
+  const ngrams1 = getNgrams(text1);
+  const ngrams2 = getNgrams(text2);
+  
+  if (ngrams1.size === 0 || ngrams2.size === 0) return 0;
+  
+  const intersection = new Set([...ngrams1].filter(w => ngrams2.has(w)));
+  return intersection.size / Math.max(ngrams1.size, ngrams2.size);
+}
+
+function detectSummaryEcho(candidateComment: string, postText: string, coreIdea: string): { isSummary: boolean; similarity: number; details: string } {
+  // Check against core idea (most important)
+  const coreSim = calculateTextSimilarity(candidateComment, coreIdea);
+  const coreNgram = calculateNgramOverlap(candidateComment, coreIdea, 3);
+  
+  // Check against full post
+  const postSim = calculateTextSimilarity(candidateComment, postText);
+  const postNgram = calculateNgramOverlap(candidateComment, postText, 3);
+  
+  // Thresholds tuned for summary detection
+  const isSummary = coreSim > 0.35 || coreNgram > 0.25 || postNgram > 0.2;
+  
+  return {
+    isSummary,
+    similarity: Math.max(coreSim, coreNgram, postNgram),
+    details: `coreJaccard=${coreSim.toFixed(2)}, coreNgram=${coreNgram.toFixed(2)}, postNgram=${postNgram.toFixed(2)}`
+  };
+}
+
 export async function evaluateCommentQuality(
   postText: string,
   platform: string,
@@ -261,29 +312,11 @@ ${candidateComment}
     responseFormat: "json",
   });
 
-  const parsed: QualityCriticResult = response.parsedJson || {
-    verdict: "PASS",
-    score: 85,
-    reasons: ["Passed basic validation checks."],
-    checks: {
-      understandsPost: true,
-      followsSelectedAngle: true,
-      preservesAuthorTopic: true,
-      addsNewObservation: true,
-      isNotSummary: true,
-      isNotGeneric: true,
-      fails20PostTest: false,
-      personalContextIsRelevant: true,
-      avoidsTopicHijacking: true,
-      avoidsSelfPromotion: true,
-      avoidsAISlop: true,
-      fitsPlatform: true,
-      soundsNaturalHuman: true,
-      proportionalLength: true,
-      noFabricatedExperience: true,
-    },
-    critiqueSummary: "Comment appears relevant and concise.",
-  };
+  if (!response.parsedJson) {
+    throw new Error(`QualityCritic: Failed to parse JSON response. Raw: ${response.text.slice(0, 500)}`);
+  }
+
+  const parsed: QualityCriticResult = response.parsedJson;
 
   const lowerComment = candidateComment.toLowerCase();
   const bannedCliches = [
@@ -330,6 +363,17 @@ ${candidateComment}
       parsed.verdict = "REGENERATE";
     }
     parsed.reasons.push(`Contains banned AI cliche: "${foundCliche}"`);
+  }
+
+  // Programmatic semantic similarity check for summary/echo detection
+  const summaryCheck = detectSummaryEcho(candidateComment, postText, analysis.coreIdea);
+  if (summaryCheck.isSummary) {
+    parsed.checks.isNotSummary = false;
+    parsed.checks.fails20PostTest = true;
+    if (parsed.verdict === "PASS") {
+      parsed.verdict = "REGENERATE";
+    }
+    parsed.reasons.push(`Semantic similarity indicates summary/echo (${summaryCheck.details})`);
   }
 
   // Programmatic summary enforcement check

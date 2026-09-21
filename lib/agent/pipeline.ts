@@ -2,22 +2,111 @@ import { analyzePost } from "./postAnalyzer";
 import { analyzeContribution } from "./contributionAnalyzer";
 import { generateCommentCandidate } from "./commentGenerator";
 import { evaluateCommentQuality } from "./qualityCritic";
-import { LLMProvider, LLMStepDebug, PipelineResult, PlatformType } from "@/lib/llm";
+import { LLMProvider, LLMStepDebug, PipelineResult, PlatformType, PostAnalysisResult } from "@/lib/llm";
+
+function getCriticProvider(provider: LLMProvider): LLMProvider {
+  return provider === "gemini" ? "openrouter" : "gemini";
+}
+
+function getCriticModel(provider: LLMProvider): string {
+  return provider === "gemini" ? "deepseek/deepseek-chat" : "gemini-flash-lite-latest";
+}
+
+function validatePostAnalysis(analysis: PostAnalysisResult, postText: string): { valid: boolean; issues: string[] } {
+  const issues: string[] = [];
+
+  // Check coreIdea is substantial and specific
+  if (!analysis.coreIdea || analysis.coreIdea.trim().length < 20) {
+    issues.push("coreIdea too short or missing");
+  }
+  if (analysis.coreIdea.toLowerCase().includes("general post") || analysis.coreIdea.toLowerCase().includes("general observation")) {
+    issues.push("coreIdea appears generic/fallback");
+  }
+
+  // Check subject is specific
+  if (!analysis.subject || analysis.subject.trim().length < 5) {
+    issues.push("subject too short or missing");
+  }
+
+  // Check claims are non-empty and not just truncated post text
+  if (!analysis.claims || analysis.claims.length === 0) {
+    issues.push("claims array is empty");
+  } else {
+    for (const claim of analysis.claims) {
+      if (claim.length > 200 && postText.includes(claim.slice(0, 100))) {
+        issues.push("claim appears to be truncated post text rather than extracted claim");
+      }
+    }
+  }
+
+  // Check potentialContributionOpportunities don't contain summaries
+  if (analysis.potentialContributionOpportunities) {
+    for (const opp of analysis.potentialContributionOpportunities) {
+      const lower = opp.toLowerCase();
+      if (lower.includes("agree") || lower.includes("summariz") || lower.includes("restate") || 
+          lower.includes("paraphrase") || lower.includes("echo") || lower.includes("confirm")) {
+        issues.push(`potentialContributionOpportunity appears to be summary/echo: "${opp}"`);
+      }
+      if (lower === "general comment" || lower === "general observation") {
+        issues.push("potentialContributionOpportunity is generic fallback");
+      }
+    }
+  }
+
+  // Check postType is valid enum
+  const validPostTypes = [
+    "founder_insight", "personal_story", "marketing_advice", "coach_post",
+    "controversial_opinion", "ai_tech", "lifestyle", "promotional", "question"
+  ];
+  if (!validPostTypes.includes(analysis.postType)) {
+    issues.push(`invalid postType: ${analysis.postType}`);
+  }
+
+  // Check implicitIdeas exist (can be empty but not missing)
+  if (!analysis.implicitIdeas) {
+    issues.push("implicitIdeas missing");
+  }
+
+  return { valid: issues.length === 0, issues };
+}
 
 export async function runCommentIntelligencePipeline(
   postText: string,
   platform: PlatformType = "LinkedIn",
   userAdditionalContext?: string,
   provider: LLMProvider = "gemini",
-  model: string = "gemini-flash-lite-latest"
+  model: string = "gemini-flash-lite-latest",
+  criticProvider?: LLMProvider,
+  criticModel?: string
 ): Promise<PipelineResult> {
   const startTime = Date.now();
   const stepDebugLogs: LLMStepDebug[] = [];
 
-  // 1. Analyze Post
-  const postAnalysisData = await analyzePost(postText, platform, provider, model);
-  const analysis = postAnalysisData.result;
+  const criticProv = criticProvider || getCriticProvider(provider);
+  const criticMod = criticModel || getCriticModel(provider);
+
+  // 1. Analyze Post (with validation retry)
+  let postAnalysisData = await analyzePost(postText, platform, provider, model);
+  let analysis = postAnalysisData.result;
   stepDebugLogs.push(postAnalysisData.debug);
+
+  // Validate Step 1 output, retry once if invalid
+  let analysisValidation = validatePostAnalysis(analysis, postText);
+  if (!analysisValidation.valid) {
+    console.warn(`[Pipeline] PostAnalysis validation failed: ${analysisValidation.issues.join("; ")}. Retrying...`);
+    postAnalysisData = await analyzePost(postText, platform, provider, model);
+    analysis = postAnalysisData.result;
+    stepDebugLogs.push({
+      ...postAnalysisData.debug,
+      stepIndex: 1.5,
+      stepName: "Semantic Post Analysis (Retry)",
+    });
+    
+    analysisValidation = validatePostAnalysis(analysis, postText);
+    if (!analysisValidation.valid) {
+      throw new Error(`PostAnalysis validation failed after retry: ${analysisValidation.issues.join("; ")}`);
+    }
+  }
 
   // 2. Discover Contribution & Relevance
   const contributionData = await analyzeContribution(
@@ -65,6 +154,8 @@ export async function runCommentIntelligencePipeline(
         platform,
         modelUsed: model,
         providerUsed: provider,
+        criticModelUsed: criticMod,
+        criticProviderUsed: criticProv,
         executionTimeMs: Date.now() - startTime,
       },
     };
@@ -82,15 +173,15 @@ export async function runCommentIntelligencePipeline(
   let generation = generationData.result;
   stepDebugLogs.push(generationData.debug);
 
-  // 4. Quality Critic & Anti-Slop Audit
+  // 4. Quality Critic & Anti-Slop Audit (uses DIFFERENT provider/model)
   let criticData = await evaluateCommentQuality(
     postText,
     platform,
     generation.comment,
     analysis,
     contribution,
-    provider,
-    model
+    criticProv,
+    criticMod
   );
   let critic = criticData.result;
   stepDebugLogs.push(criticData.debug);
@@ -121,8 +212,8 @@ export async function runCommentIntelligencePipeline(
       generation.comment,
       analysis,
       contribution,
-      provider,
-      model
+      criticProv,
+      criticMod
     );
     critic = criticData.result;
     stepDebugLogs.push({
@@ -145,6 +236,8 @@ export async function runCommentIntelligencePipeline(
       platform,
       modelUsed: model,
       providerUsed: provider,
+      criticModelUsed: criticMod,
+      criticProviderUsed: criticProv,
       executionTimeMs: Date.now() - startTime,
     },
   };
