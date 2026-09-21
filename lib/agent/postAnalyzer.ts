@@ -29,6 +29,12 @@ Never treat the author's existing ideas as contribution opportunities.
 Base every inference strictly on evidence from the post. Do not invent the author's motivations, beliefs, experiences, personality, or intentions beyond what the text reasonably supports.
 </grounding_rule>
 
+<anti_summary_rule>
+CRITICAL: A contribution opportunity MUST NEVER be a summary, restatement, or paraphrase of the author's core idea, claims, or post text.
+Do NOT suggest opportunities like "Agreeing that X is important", "Confirming that Y leads to Z", or "Summarizing why the author's point is true".
+Every opportunity must introduce a fresh dimension, edge case, practical nuance, or overlooked tradeoff that is missing from the original post.
+</anti_summary_rule>
+
 <contribution_rule>
 A contribution opportunity must identify something a thoughtful commenter could add that is NOT already fully expressed by the author.
 
@@ -71,7 +77,7 @@ Return a JSON object with EXACTLY this structure:
   ],
 
   "potentialContributionOpportunities": [
-    "Specific, grounded points where a commenter could add something not already fully stated in the post. Each opportunity must connect to a claim, tension, implication, limitation, or overlooked dimension."
+    "Specific, grounded points where a commenter could add something fresh not already stated in the post. MUST NOT be a summary, restatement, or paraphrase of the post's core idea or claims. Each opportunity must connect to a claim, tension, implication, limitation, or overlooked dimension."
   ],
 
   "evidenceLevel": {

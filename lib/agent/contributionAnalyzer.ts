@@ -81,6 +81,12 @@ Recommend SKIP (shouldSkip = true) when:
 5. REQUIRED FABRICATION: A comment would require inventing personal experience, clients, stats, or beliefs not in the user context.
 
 Do NOT skip posts that discuss real concepts, stories, or tensions (e.g. treating symptoms vs root causes, or realizing you were solving the wrong problem) simply because they are in wellness, coaching, or branding. The user can engage as a thoughtful human reader.
+<rule id="4" name="Strict Anti-Summary & Anti-Echo Filter">
+NEVER select an angle or construct an angleExplanation that merely summarizes, restates, echoes, or rephrases the author's core idea or claims.
+
+- An angleExplanation MUST state what NEW nuance, edge case, tradeoff, or practical angle is being brought to the table.
+- Do NOT write angleExplanations such as: "Agreeing that fixing processes first is key", "Summarizing why sales hiring requires a playbook", or "Reiterating the author's point about X".
+- If a post's ideas leave NO room to add a fresh nuance or observation without repeating or summarizing the author's message, recommend SKIP (shouldSkip: true) with skipReason: "Post leaves no room for genuine contribution beyond echoing or summarizing the author's point."
 </rule>
 </rules>
 
@@ -123,7 +129,7 @@ Return JSON with EXACTLY this structure:
   "shouldSkip": boolean,
   "skipReason": "Specific explanation if shouldSkip is true, otherwise empty string",
   "selectedAngle": "one of the available angles above, or null if shouldSkip",
-  "angleExplanation": "Brief explanation of what the user could contribute and why it forms a natural human response. Do not summarize the post.",
+  "angleExplanation": "Brief explanation of the NEW added angle or nuance to contribute. MUST NOT summarize, restate, or paraphrase the post's core idea or claims.",
   "personalizationLevel": 0 | 1 | 2 | 3,
   "topicHijackRisk": boolean,
   "relevantContextSnippet": "Only include specific user background facts directly relevant. If personalizationLevel is 0, return null."

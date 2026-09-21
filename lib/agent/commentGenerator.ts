@@ -70,11 +70,25 @@ MENTAL TEST:
 If yes, the comment is too generic. Rewrite it.
 </specificity>
 
-<no_rephrasing>
-Do not summarize or restate the author's point.
-Do not simply replace the author's words with synonyms.
-The comment should move the conversation slightly forward rather than mirror the post.
-</no_rephrasing>
+<strict_anti_summary_rules>
+CRITICAL ANTI-SUMMARY & ANTI-ECHO DIRECTIVES:
+
+1. ABSOLUTE BAN ON POST SUMMARIES & CORE IDEA RESTATEMENTS:
+- Never write a comment that summarizes, paraphrases, or echoes the author's main message, conclusion, or argument.
+- Never write "You said X, and that's true because Y" or "Doing X is so important for Y" when X is the post's main point.
+- The author already wrote the post; they do NOT need a condensed or rephrased version of their own thoughts in their comment section.
+
+2. NO MIRRORING PREMISES OR CONTEXT CLAUSES:
+- Do NOT begin the comment by restating the post's context or setup (e.g., "When building sales teams...", "Automating a broken process...").
+- Jump IMMEDIATELY into the specific added nuance, edge case, or observation without setting up the author's premise.
+
+3. THE INDEPENDENT VALUE TEST:
+- Strip out the author's post. Does the comment stand alone as a distinct, fresh thought or observation?
+- If the comment just repeats the premise of the post in different words, IT IS A SUMMARY FAILURE. Rewrite it immediately to focus purely on a specific new angle or observation.
+
+4. NO REFRESHED SYNONYMS:
+- Do not attempt to bypass this rule by replacing the author's key terms with synonyms while keeping the underlying restatement intact.
+</strict_anti_summary_rules>
 
 <what_counts_as_contribution>
 A contribution can be:

@@ -44,11 +44,20 @@ Ask: "Does this comment feel like it could only reasonably have been written aft
 If it could easily be moved to many unrelated posts, reject it.
 </criterion>
 
-<criterion id="2" name="Contribution Over Summary">
-The comment should move the conversation slightly forward.
-It may add a nuance, identify an implication, make a useful distinction, offer a reasonable perspective, respond thoughtfully to a specific idea, extend an idea, raise a genuinely relevant question, or make a specific observation.
-It does NOT need to introduce completely new information.
-However, merely repeating, paraphrasing, agreeing with, or summarizing the author's point is not enough.
+<criterion id="2" name="Strict Zero-Summary & Anti-Echo Audit">
+RUTHLESSLY REJECT any comment that summarizes, rephrases, mirrors, or echoes the author's core idea, claims, or post premise.
+
+Audit steps for summary detection:
+1. Compare candidate comment against POST CORE IDEA and ORIGINAL POST.
+2. Does the comment express the same core takeaway as the post (even using different words or synonyms)?
+3. Does the comment start by repeating the author's premise before adding a point?
+4. Is the comment essentially an echo: "I agree, [rephrased post point] is true"?
+
+If ANY of these are true:
+- Set checks.isNotSummary = false.
+- The verdict MUST NOT be PASS.
+- If a non-summary angle can be salvaged, set verdict: 'REGENERATE' with explicit instructions: "Remove post restatement/summary. State ONLY the added nuance or observation."
+- If no non-summary angle exists, set verdict: 'SKIP' with critiqueSummary: "Comment merely summarized or echoed the post's core idea."
 </criterion>
 
 <criterion id="3" name="Professional Expertise Is Not Required">
@@ -321,6 +330,16 @@ ${candidateComment}
       parsed.verdict = "REGENERATE";
     }
     parsed.reasons.push(`Contains banned AI cliche: "${foundCliche}"`);
+  }
+
+  // Programmatic summary enforcement check
+  if (parsed.checks.isNotSummary === false) {
+    if (parsed.verdict === "PASS") {
+      parsed.verdict = "REGENERATE";
+    }
+    if (!parsed.reasons.some((r) => r.toLowerCase().includes("summary"))) {
+      parsed.reasons.push("Comment restates or summarizes the post's core idea instead of adding a fresh observation.");
+    }
   }
 
   // Programmatic sentence & word length check (1.5 sentences max)
