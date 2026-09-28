@@ -15,6 +15,15 @@ export interface LLMRequest {
 export interface LLMResponse {
   text: string;
   parsedJson?: any;
+  providerUsed: LLMProvider;
+  modelUsed: string;
+}
+
+export class LLMHttpError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "LLMHttpError";
+  }
 }
 
 export type PlatformType = "LinkedIn" | "Reddit" | "Facebook";
@@ -115,6 +124,8 @@ export interface LLMStepDebug {
   rawResponseText: string;
   parsedOutput: any;
   executionTimeMs: number;
+  providerUsed?: LLMProvider;
+  modelUsed?: string;
 }
 
 export interface PipelineResult {

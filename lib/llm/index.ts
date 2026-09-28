@@ -1,69 +1,51 @@
-import { LLMProvider, LLMRequest, LLMResponse } from "./types";
+import { LLMHttpError, LLMProvider, LLMRequest, LLMResponse } from "./types";
 import { callOpenRouter } from "./openrouter";
 import { callGemini } from "./gemini";
 
-async function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function isRetryableError(error: unknown): boolean {
+  if (error instanceof LLMHttpError) return error.status === 429 || error.status >= 500;
+  return error instanceof Error &&
+    (/timeout|abort|ETIMEDOUT|ECONNRESET|fetch failed/i.test(error.message) || error.name === "TimeoutError");
 }
 
-function isRetryableError(error: any): boolean {
-  const message = error.message || String(error);
-  return (
-    message.includes("429") ||
-    message.includes("RESOURCE_EXHAUSTED") ||
-    message.includes("500") ||
-    message.includes("502") ||
-    message.includes("503") ||
-    message.includes("504") ||
-    message.includes("timeout") ||
-    message.includes("ETIMEDOUT") ||
-    message.includes("ECONNRESET")
-  );
+async function callProvider(provider: LLMProvider, model: string, request: LLMRequest, attempts: number): Promise<LLMResponse> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const response = provider === "gemini" ? await callGemini(request, model) : await callOpenRouter(request, model);
+      if (request.responseFormat === "json" &&
+          (!response.parsedJson || typeof response.parsedJson !== "object" || Array.isArray(response.parsedJson))) {
+        throw new Error("Invalid JSON model response");
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableError(error) || attempt === attempts - 1) break;
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  }
+  throw lastError;
 }
 
 export async function callModel(
   provider: LLMProvider = "gemini",
   model: string = "gemini-flash-lite-latest",
   request: LLMRequest,
-  retries: number = 3
+  retries: number = 2
 ): Promise<LLMResponse> {
-  let lastError: Error | null = null;
-  
-  for (let attempt = 1; attempt <= retries; attempt++) {
+  try {
+    return await callProvider(provider, model, request, Math.max(1, retries));
+  } catch (primaryError) {
+    const fallback: LLMProvider = provider === "gemini" ? "openrouter" : "gemini";
+    const fallbackKey = fallback === "gemini" ? process.env.GEMINI_API_KEY : process.env.OPENROUTER_API_KEY;
+    if (!fallbackKey) throw primaryError;
+    const fallbackModel = fallback === "gemini" ? "gemini-flash-lite-latest" : "deepseek/deepseek-chat";
     try {
-      if (provider === "gemini") {
-        return await callGemini(request, model);
-      } else {
-        return await callOpenRouter(request, model);
-      }
-    } catch (error: any) {
-      lastError = error;
-      console.warn(`Model call attempt ${attempt}/${retries} (${provider}/${model}) failed: ${error.message}`);
-      
-      const retryable = isRetryableError(error);
-      
-      // On rate limit or non-retryable error on last attempt, trigger provider fallback
-      if ((retryable && attempt === retries) || (!retryable && attempt === retries)) {
-        if (provider === "gemini" && process.env.OPENROUTER_API_KEY) {
-          console.info("Error on Gemini. Falling back to OpenRouter provider...");
-          return await callOpenRouter(request, "deepseek/deepseek-chat");
-        } else if (provider === "openrouter" && process.env.GEMINI_API_KEY) {
-          console.info("Error on OpenRouter. Falling back to Gemini provider...");
-          return await callGemini(request, "gemini-flash-lite-latest");
-        }
-      }
-
-      if (attempt < retries && retryable) {
-        const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 8000); // Exponential backoff: 2s, 4s, 8s max
-        await delay(backoffMs);
-      } else if (attempt < retries) {
-        // Non-retryable error but not last attempt - wait a bit
-        await delay(1000);
-      }
+      return await callProvider(fallback, fallbackModel, request, 1);
+    } catch (fallbackError) {
+      throw new AggregateError([primaryError, fallbackError], "Both model providers failed");
     }
   }
-
-  throw lastError || new Error("All model call attempts and fallbacks failed.");
 }
 
 export * from "./types";

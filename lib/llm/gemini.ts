@@ -1,4 +1,4 @@
-import { LLMRequest, LLMResponse } from "./types";
+import { LLMHttpError, LLMRequest, LLMResponse } from "./types";
 
 export async function callGemini(
   request: LLMRequest,
@@ -36,11 +36,12 @@ export async function callGemini(
       "Content-Type": "application/json",
     },
     body: JSON.stringify(requestBody),
+    signal: AbortSignal.timeout(12000),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Gemini API call failed (${response.status}): ${errorText}`);
+    throw new LLMHttpError(response.status, `Gemini API call failed (${response.status}): ${errorText}`);
   }
 
   const data = await response.json();
@@ -59,5 +60,7 @@ export async function callGemini(
   return {
     text: rawText,
     parsedJson,
+    providerUsed: "gemini",
+    modelUsed: modelName,
   };
 }

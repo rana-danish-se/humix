@@ -1,4 +1,4 @@
-import { LLMRequest, LLMResponse } from "./types";
+import { LLMHttpError, LLMRequest, LLMResponse } from "./types";
 
 export async function callOpenRouter(
   request: LLMRequest,
@@ -39,11 +39,12 @@ export async function callOpenRouter(
       "X-Title": "Humix Comment Intelligence",
     },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(12000),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(
+    throw new LLMHttpError(response.status,
       `OpenRouter API request failed with status ${response.status}: ${errorText}`
     );
   }
@@ -64,5 +65,7 @@ export async function callOpenRouter(
   return {
     text: rawText,
     parsedJson,
+    providerUsed: "openrouter",
+    modelUsed: modelSlug,
   };
 }

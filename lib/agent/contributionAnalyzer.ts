@@ -10,6 +10,8 @@ export async function analyzeContribution(
   model: string = "gemini-flash-lite-latest"
 ): Promise<{ result: ContributionResult; debug: LLMStepDebug }> {
   const startTime = Date.now();
+  const techTerms = /\b(?:AI|automation|software|coding?|API|algorithms?|machine learning|SaaS|tech(?:nology)?)\b/i;
+  const isTechPost = analysis.postType === "ai_tech" || techTerms.test(`${analysis.subject} ${postText}`);
 
   const systemPrompt = `<system_prompt>
 <role>You are a Social Contribution & Relevance Analyzer.</role>
@@ -59,7 +61,7 @@ When professional expertise is irrelevant:
 The purpose of a comment is not to demonstrate superior intelligence or teach the author something new.
 
 A legitimate contribution can:
-- notice something specific in the post
+- notice something specific in the post, including a grounded human reaction
 - extend an idea slightly
 - point out a practical implication
 - add a useful nuance or distinction
@@ -77,14 +79,14 @@ Recommend SKIP (shouldSkip = true) when:
 1. PURE LIFESTYLE / PERSONAL MOMENTS: Posts like "Spent the weekend hiking with my family ❤️" with no discussion surface. Do NOT manufacture generic AI sludge about "stepping away from the noise."
 2. PURE PROMOTIONAL / ANNOUNCEMENTS: Posts like "Excited to announce my new coaching program!" with no underlying story, hook, or discussion idea. Do NOT manufacture profound observations.
 3. NO DISCUSSION SURFACE: The post contains no meaningful idea, question, tension, observation, or hook to engage with.
-4. ONLY SUMMARY / ECHO REMAINING: The only possible response is to paraphrase, summarize, or give generic praise ("Great post!").
+4. ONLY SUMMARY / ECHO REMAINING: The only possible response is to paraphrase, summarize, or give generic praise ("Great post!"). A brief reaction to a specific detail is still a valid response.
 5. REQUIRED FABRICATION: A comment would require inventing personal experience, clients, stats, or beliefs not in the user context.
 
 Do NOT skip posts that discuss real concepts, stories, or tensions (e.g. treating symptoms vs root causes, or realizing you were solving the wrong problem) simply because they are in wellness, coaching, or branding. The user can engage as a thoughtful human reader.
 <rule id="4" name="Strict Anti-Summary & Anti-Echo Filter">
-NEVER select an angle or construct an angleExplanation that merely summarizes, restates, echoes, or rephrases the author's core idea or claims.
+Do not select an angle that merely summarizes, restates, or rephrases the author's core idea or claims. A specific natural reaction is enough; do not manufacture novelty.
 
-- An angleExplanation MUST state what NEW nuance, edge case, tradeoff, or practical angle is being brought to the table.
+- An angleExplanation should state the actual response the commenter can make, whether that is a nuance or a specific grounded reaction.
 - Do NOT write angleExplanations such as: "Agreeing that fixing processes first is key", "Summarizing why sales hiring requires a playbook", or "Reiterating the author's point about X".
 - If a post's ideas leave NO room to add a fresh nuance or observation without repeating or summarizing the author's message, recommend SKIP (shouldSkip: true) with skipReason: "Post leaves no room for genuine contribution beyond echoing or summarizing the author's point."
 </rule>
@@ -146,9 +148,7 @@ AUTHOR TONE: ${analysis.tone}
 POST CLAIMS: ${JSON.stringify(analysis.claims)}
 
 USER BACKGROUND SUMMARY:
-${JSON.stringify(USER_PROFILE.background)}
-USER OPINIONS:
-${JSON.stringify(USER_PROFILE.opinions)}
+${isTechPost ? JSON.stringify(USER_PROFILE.background) : "Not supplied for this topic; comment as a reader without professional positioning."}
 OPTIONAL USER CONTEXT PROVIDED FOR THIS POST:
 ${userAdditionalContext || "None"}
 
@@ -194,25 +194,29 @@ ${postText}
     }
   }
 
-  const isTechPost =
-    analysis.postType === "ai_tech" ||
-    analysis.subject.toLowerCase().includes("tech") ||
-    analysis.subject.toLowerCase().includes("software") ||
-    analysis.subject.toLowerCase().includes("automation") ||
-    analysis.subject.toLowerCase().includes("code") ||
-    analysis.subject.toLowerCase().includes("ai");
-
-  // Fix: If tech hijack detected in angleExplanation (not just snippet), escalate
-  if (!isTechPost && parsed.angleExplanation?.toLowerCase().match(/ai|automation|software|code|api|algorithm|machine learning/)) {
+  // Keep an unrelated professional angle out of the comment without discarding
+  // a valid conversational opening in the post.
+  if (!isTechPost && parsed.angleExplanation && techTerms.test(parsed.angleExplanation)) {
     parsed.topicHijackRisk = true;
-    parsed.skipReasonCode = "TOPIC_HIJACK_RISK";
-    parsed.shouldSkip = true;
-    parsed.skipReason = "Selected angle hijacks topic to tech/AI despite non-tech post";
-    parsed.selectedAngle = undefined;
-    parsed.angleExplanation = undefined;
     parsed.personalizationLevel = 0;
     parsed.relevantContextSnippet = undefined;
-  } else if (!isTechPost && parsed.relevantContextSnippet?.toLowerCase().match(/ai|automation|software|code|api/)) {
+    const alternative = analysis.potentialContributionOpportunities?.find(
+      (opportunity) => !techTerms.test(opportunity)
+    );
+    if (alternative) {
+      parsed.shouldSkip = false;
+      parsed.skipReason = undefined;
+      parsed.skipReasonCode = undefined;
+      parsed.selectedAngle = "relevant_observation";
+      parsed.angleExplanation = alternative;
+    } else {
+      parsed.shouldSkip = true;
+      parsed.skipReasonCode = "TOPIC_HIJACK_RISK";
+      parsed.skipReason = "No grounded, non-promotional comment angle was found.";
+      parsed.selectedAngle = undefined;
+      parsed.angleExplanation = undefined;
+    }
+  } else if (!isTechPost && parsed.relevantContextSnippet && techTerms.test(parsed.relevantContextSnippet)) {
     parsed.topicHijackRisk = true;
     parsed.personalizationLevel = 0;
     parsed.relevantContextSnippet = undefined;
@@ -227,6 +231,8 @@ ${postText}
     rawResponseText: response.text,
     parsedOutput: parsed,
     executionTimeMs: Date.now() - startTime,
+    providerUsed: response.providerUsed,
+    modelUsed: response.modelUsed,
   };
 
   return { result: parsed, debug };

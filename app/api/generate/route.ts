@@ -28,12 +28,14 @@ export async function POST(request: Request) {
       selectedModel
     );
 
-    return NextResponse.json(result);
+    return NextResponse.json(process.env.NODE_ENV === "production"
+      ? { ...result, stepDebugLogs: [] }
+      : result);
   } catch (error: any) {
     console.error("Error in /api/generate:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to process comment intelligence pipeline." },
-      { status: 500 }
+      { error: "Could not produce a reliable comment draft. Please try again." },
+      { status: 503 }
     );
   }
 }

@@ -30,9 +30,9 @@ Base every inference strictly on evidence from the post. Do not invent the autho
 </grounding_rule>
 
 <anti_summary_rule>
-CRITICAL: A contribution opportunity MUST NEVER be a summary, restatement, or paraphrase of the author's core idea, claims, or post text.
+A contribution opportunity should be a response to the post, not just a summary, restatement, or paraphrase of it.
 Do NOT suggest opportunities like "Agreeing that X is important", "Confirming that Y leads to Z", or "Summarizing why the author's point is true".
-Every opportunity must introduce a fresh dimension, edge case, practical nuance, or overlooked tradeoff that is missing from the original post.
+An opportunity may be a specific, grounded reaction. Do not invent a new insight merely to appear thoughtful.
 </anti_summary_rule>
 
 <contribution_rule>
@@ -48,7 +48,7 @@ Good contribution opportunities may involve:
 - a relevant observation that extends the author's idea
 
 Do NOT manufacture disagreement simply to create engagement.
-Do NOT treat praise, agreement, paraphrasing, or summarization as contribution.
+Do not treat generic praise, paraphrasing, or summarization as the whole contribution. A specific reaction can be sufficient.
 Do NOT suggest generic engagement tactics such as "ask a question" or "share a personal story."
 </contribution_rule>
 
@@ -77,7 +77,7 @@ Return a JSON object with EXACTLY this structure:
   ],
 
   "potentialContributionOpportunities": [
-    "Specific, grounded points where a commenter could add something fresh not already stated in the post. MUST NOT be a summary, restatement, or paraphrase of the post's core idea or claims. Each opportunity must connect to a claim, tension, implication, limitation, or overlooked dimension."
+    "Specific, grounded ways to respond to a detail in the post. This can be a small nuance or a natural reaction, but not just a summary or generic praise."
   ],
 
   "evidenceLevel": {
@@ -126,6 +126,8 @@ ${postText}
     rawResponseText: response.text,
     parsedOutput: parsed,
     executionTimeMs: Date.now() - startTime,
+    providerUsed: response.providerUsed,
+    modelUsed: response.modelUsed,
   };
 
   return { result: parsed, debug };

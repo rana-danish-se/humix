@@ -28,7 +28,7 @@ const FORMULAIC_PATTERNS = [
   /there'?s something really interesting about/i,
 ];
 
-function validateComment(comment: string, contribution: ContributionResult, postText: string): { valid: boolean; issues: string[] } {
+function validateComment(comment: string): { valid: boolean; issues: string[] } {
   const issues: string[] = [];
   const lower = comment.toLowerCase();
 
@@ -46,46 +46,21 @@ function validateComment(comment: string, contribution: ContributionResult, post
     }
   }
 
-  // Length check: max 1.5 sentences, ~22 words
+  // A short conversational reply can naturally use two sentences.
   const words = comment.split(/\s+/).filter(Boolean).length;
   const sentenceCount = comment.split(/[.!?]+/).filter((s) => s.trim().length > 0).length;
   
-  if (sentenceCount > 2 || (sentenceCount === 2 && words > 22) || words > 28) {
-    issues.push(`Exceeds length limit: ${sentenceCount} sentences, ${words} words (max 1.5 sentences, ~22 words)`);
+  if (sentenceCount > 2 || words > 40) {
+    issues.push(`Too long for a comment: ${sentenceCount} sentences, ${words} words`);
   }
 
-  // Basic angle adherence: check if angleExplanation key concepts appear
-  if (contribution.angleExplanation) {
-    const angleKeywords = contribution.angleExplanation
-      .toLowerCase()
-      .split(/\s+/)
-      .filter(w => w.length > 4)
-      .slice(0, 5);
-    
-    const hasAngleOverlap = angleKeywords.some(kw => lower.includes(kw));
-    if (!hasAngleOverlap && angleKeywords.length > 0) {
-      issues.push(`Comment may not follow selected angle (${contribution.selectedAngle})`);
-    }
+  // The profile describes capabilities, not a specific client, project, or result.
+  // Keep those first-person claims out even when the topic is relevant to Ivoro.
+  if (/\b(?:i(?:'ve| have) (?:seen|worked|built|helped|delivered|used)|i (?:worked|built|helped|saw|delivered)|we(?:'ve| have) (?:seen|worked|built|helped|delivered)|we (?:worked|built|helped|delivered)|my (?:clients?|projects?|team)|our (?:clients?|projects?|team)|in my experience|at ivoro)\b/i.test(comment)) {
+    issues.push("Claims firsthand work or experience that the provided profile does not establish");
   }
-
-  // Topic hijack check for personalizationLevel 0
-  if (contribution.personalizationLevel === 0 && contribution.topicHijackRisk) {
-    const techTerms = ["automation", "ai tool", "software", "api", "code", "script", "workflow", "integration", "backend", "saas"];
-    for (const term of techTerms) {
-      if (lower.includes(term)) {
-        issues.push(`Topic hijack detected: contains "${term}" but personalizationLevel=0 and topicHijackRisk=true`);
-      }
-    }
-  }
-
-  // Authenticity check: first-person claims without context
-  const firstPersonClaims = ["i've seen", "i have seen", "in my experience", "my clients", "my projects", "i've worked", "i worked"];
-  if (contribution.personalizationLevel === 0) {
-    for (const claim of firstPersonClaims) {
-      if (lower.includes(claim)) {
-        issues.push(`Invented personal experience detected: "${claim}" (personalizationLevel=0)`);
-      }
-    }
+  if (/\b(?:ivoro|DM me|book a call|check out (?:my|our)|my (?:service|agency)|our (?:service|agency))\b/i.test(comment)) {
+    issues.push("Contains unsolicited self-promotion");
   }
 
   return { valid: issues.length === 0, issues };
@@ -140,12 +115,11 @@ Turn the underlying idea into something a person would naturally say.
 </step2_constraint>
 
 <length_constraint>
-STRICT LENGTH CONSTRAINT: Maximum 1.5 sentences length max (approx 8–22 words).
+Aim for one natural thought, usually 10–35 words. Never exceed 40 words or two short sentences.
 
 The comment must be concise and punchy:
 - Either 1 complete, focused sentence.
-- Or 1 main sentence with a short connecting clause/phrase (max 1.5 sentences total).
-- Under no circumstances should the comment be 2 full, lengthy sentences or exceed 1.5 sentences.
+- Or two short sentences when that is how a person would naturally reply.
 
 Use fewer words when the thought is complete.
 Never add filler just to reach a word count.
@@ -164,8 +138,8 @@ If yes, the comment is too generic. Rewrite it.
 <strict_anti_summary_rules>
 CRITICAL ANTI-SUMMARY & ANTI-ECHO DIRECTIVES:
 
-1. ABSOLUTE BAN ON POST SUMMARIES & CORE IDEA RESTATEMENTS:
-- Never write a comment that summarizes, paraphrases, or echoes the author's main message, conclusion, or argument.
+1. DO NOT SUBSTITUTE A SUMMARY FOR A RESPONSE:
+- A comment should respond to a specific point rather than condense the whole post.
 - Never write "You said X, and that's true because Y" or "Doing X is so important for Y" when X is the post's main point.
 - The author already wrote the post; they do NOT need a condensed or rephrased version of their own thoughts in their comment section.
 
@@ -173,9 +147,9 @@ CRITICAL ANTI-SUMMARY & ANTI-ECHO DIRECTIVES:
 - Do NOT begin the comment by restating the post's context or setup (e.g., "When building sales teams...", "Automating a broken process...").
 - Jump IMMEDIATELY into the specific added nuance, edge case, or observation without setting up the author's premise.
 
-3. THE INDEPENDENT VALUE TEST:
-- Strip out the author's post. Does the comment stand alone as a distinct, fresh thought or observation?
-- If the comment just repeats the premise of the post in different words, IT IS A SUMMARY FAILURE. Rewrite it immediately to focus purely on a specific new angle or observation.
+3. CONVERSATION TEST:
+- A brief, specific reaction can be enough. Do not manufacture a new lesson to sound insightful.
+- If the comment merely rewrites the premise, add a genuine reaction or choose to skip.
 
 4. NO REFRESHED SYNONYMS:
 - Do not attempt to bypass this rule by replacing the author's key terms with synonyms while keeping the underlying restatement intact.
@@ -198,7 +172,7 @@ Do not manufacture novelty simply to appear insightful.
 </what_counts_as_contribution>
 
 <authenticity>
-NEVER invent:
+NEVER invent or imply firsthand proof from Ivoro's general capability profile:
 - personal experiences
 - clients
 - projects
@@ -212,6 +186,8 @@ NEVER invent:
 
 If personalization would require inventing something, do not personalize.
 Never write "I've seen this myself" unless that experience is explicitly available in the provided user context.
+Do not mention Ivoro, its services, clients, projects, or results in this comment.
+The user's professional background can help select a relevant idea, but is not a reason to claim expertise in the comment.
 </authenticity>
 
 <tone>
@@ -311,7 +287,7 @@ Before returning the comment, silently check:
 8. Am I trying too hard to sound insightful?
 9. Did I use a cliché or AI-style phrase?
 10. Would the user feel comfortable attaching their name to this comment?
-11. Is the comment strictly within the maximum 1.5 sentences length constraint?
+11. Is the comment brief enough to sound like a reply rather than a mini-post?
 
 If any answer is unfavorable, rewrite before returning.
 </final_quality_check>
@@ -353,13 +329,13 @@ ${postText}
       responseFormat: "json",
     });
 
-    if (!response.parsedJson?.comment) {
+    if (typeof response.parsedJson?.comment !== "string") {
       lastResponse = `Failed to parse JSON: ${response.text.slice(0, 300)}`;
       continue;
     }
 
     const rawComment = response.parsedJson.comment.trim();
-    const validation = validateComment(rawComment, contribution, postText);
+    const validation = validateComment(rawComment);
 
     if (validation.valid) {
       const words = rawComment.split(/\s+/).filter(Boolean).length;
@@ -380,6 +356,8 @@ ${postText}
         rawResponseText: response.text,
         parsedOutput: parsedResult,
         executionTimeMs: Date.now() - startTime,
+        providerUsed: response.providerUsed,
+        modelUsed: response.modelUsed,
       };
 
       return { result: parsedResult, debug };

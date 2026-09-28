@@ -14,37 +14,44 @@ function getCriticModel(provider: LLMProvider): string {
 
 function validatePostAnalysis(analysis: PostAnalysisResult, postText: string): { valid: boolean; issues: string[] } {
   const issues: string[] = [];
+  if (!analysis || typeof analysis !== "object") return { valid: false, issues: ["analysis is not an object"] };
 
   // Check coreIdea is substantial and specific
-  if (!analysis.coreIdea || analysis.coreIdea.trim().length < 20) {
+  if (typeof analysis?.coreIdea !== "string" || analysis.coreIdea.trim().length < 20) {
     issues.push("coreIdea too short or missing");
-  }
-  if (analysis.coreIdea.toLowerCase().includes("general post") || analysis.coreIdea.toLowerCase().includes("general observation")) {
+  } else if (analysis.coreIdea.toLowerCase().includes("general post") || analysis.coreIdea.toLowerCase().includes("general observation")) {
     issues.push("coreIdea appears generic/fallback");
   }
 
   // Check subject is specific
-  if (!analysis.subject || analysis.subject.trim().length < 5) {
+  if (typeof analysis.subject !== "string" || analysis.subject.trim().length < 5) {
     issues.push("subject too short or missing");
   }
 
   // Check claims are non-empty and not just truncated post text
-  if (!analysis.claims || analysis.claims.length === 0) {
+  if (!Array.isArray(analysis.claims) || analysis.claims.length === 0) {
     issues.push("claims array is empty");
   } else {
     for (const claim of analysis.claims) {
-      if (claim.length > 200 && postText.includes(claim.slice(0, 100))) {
+      if (typeof claim !== "string") {
+        issues.push("claim is not a string");
+      } else if (claim.length > 200 && postText.includes(claim.slice(0, 100))) {
         issues.push("claim appears to be truncated post text rather than extracted claim");
       }
     }
   }
 
   // Check potentialContributionOpportunities don't contain summaries
-  if (analysis.potentialContributionOpportunities) {
+  if (analysis.potentialContributionOpportunities && !Array.isArray(analysis.potentialContributionOpportunities)) {
+    issues.push("potentialContributionOpportunities is not an array");
+  } else if (analysis.potentialContributionOpportunities) {
     for (const opp of analysis.potentialContributionOpportunities) {
+      if (typeof opp !== "string") {
+        issues.push("potentialContributionOpportunity is not a string");
+        continue;
+      }
       const lower = opp.toLowerCase();
-      if (lower.includes("agree") || lower.includes("summariz") || lower.includes("restate") || 
-          lower.includes("paraphrase") || lower.includes("echo") || lower.includes("confirm")) {
+      if (/^(?:agreeing that|summarizing|restating|paraphrasing|echoing|confirming that)\b/.test(lower)) {
         issues.push(`potentialContributionOpportunity appears to be summary/echo: "${opp}"`);
       }
       if (lower === "general comment" || lower === "general observation") {
@@ -63,7 +70,7 @@ function validatePostAnalysis(analysis: PostAnalysisResult, postText: string): {
   }
 
   // Check implicitIdeas exist (can be empty but not missing)
-  if (!analysis.implicitIdeas) {
+  if (!Array.isArray(analysis.implicitIdeas)) {
     issues.push("implicitIdeas missing");
   }
 
@@ -118,6 +125,12 @@ export async function runCommentIntelligencePipeline(
     model
   );
   const contribution = contributionData.result;
+  if (typeof contribution.shouldSkip !== "boolean" ||
+      ![0, 1, 2, 3].includes(contribution.personalizationLevel) ||
+      typeof contribution.topicHijackRisk !== "boolean" ||
+      (!contribution.shouldSkip && (!contribution.selectedAngle || typeof contribution.angleExplanation !== "string"))) {
+    throw new Error("Contribution analysis returned an invalid decision");
+  }
   stepDebugLogs.push(contributionData.debug);
 
   // If Contribution Analyzer recommends SKIP immediately
@@ -152,10 +165,10 @@ export async function runCommentIntelligencePipeline(
       stepDebugLogs,
       metadata: {
         platform,
-        modelUsed: model,
-        providerUsed: provider,
-        criticModelUsed: criticMod,
-        criticProviderUsed: criticProv,
+        modelUsed: contributionData.debug.modelUsed || model,
+        providerUsed: contributionData.debug.providerUsed || provider,
+        criticModelUsed: undefined,
+        criticProviderUsed: undefined,
         executionTimeMs: Date.now() - startTime,
       },
     };
@@ -234,10 +247,10 @@ export async function runCommentIntelligencePipeline(
     stepDebugLogs,
     metadata: {
       platform,
-      modelUsed: model,
-      providerUsed: provider,
-      criticModelUsed: criticMod,
-      criticProviderUsed: criticProv,
+      modelUsed: generationData.debug.modelUsed || model,
+      providerUsed: generationData.debug.providerUsed || provider,
+      criticModelUsed: criticData.debug.modelUsed || criticMod,
+      criticProviderUsed: criticData.debug.providerUsed || criticProv,
       executionTimeMs: Date.now() - startTime,
     },
   };

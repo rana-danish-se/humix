@@ -28,10 +28,9 @@ export const USER_PROFILE: UserProfile = {
     "Business processes and digital asset analysis",
   ],
   opinions: [
-    "Technology should solve real business problems, not exist for its own sake.",
-    "Automation should improve sound processes; automating a broken process just creates faster chaos.",
-    "AI should address genuine bottlenecks rather than being forced in because it is trendy.",
-    "Software design must be driven strictly by clear business requirements.",
+    "Choose technology based on the business need, including improving existing tools when that fits.",
+    "Use AI and automation for a defined purpose, with human review where needed.",
+    "Do not assume a business has a problem based only on public information.",
   ],
   voicePreferences: {
     tone: [

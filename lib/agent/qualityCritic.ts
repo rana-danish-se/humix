@@ -1,56 +1,5 @@
 import { callModel, LLMProvider, PostAnalysisResult, ContributionResult, QualityCriticResult, LLMStepDebug } from "@/lib/llm";
 
-function calculateTextSimilarity(text1: string, text2: string): number {
-  const normalize = (t: string) => t.toLowerCase().replace(/[^\w\s]/g, "").split(/\s+/).filter(w => w.length > 2);
-  const words1 = new Set(normalize(text1));
-  const words2 = new Set(normalize(text2));
-  
-  if (words1.size === 0 || words2.size === 0) return 0;
-  
-  const intersection = new Set([...words1].filter(w => words2.has(w)));
-  const union = new Set([...words1, ...words2]);
-  
-  return intersection.size / union.size; // Jaccard similarity
-}
-
-function calculateNgramOverlap(text1: string, text2: string, n: number = 3): number {
-  const getNgrams = (t: string) => {
-    const words = t.toLowerCase().replace(/[^\w\s]/g, "").split(/\s+/).filter(w => w.length > 0);
-    const ngrams = new Set<string>();
-    for (let i = 0; i <= words.length - n; i++) {
-      ngrams.add(words.slice(i, i + n).join(" "));
-    }
-    return ngrams;
-  };
-  
-  const ngrams1 = getNgrams(text1);
-  const ngrams2 = getNgrams(text2);
-  
-  if (ngrams1.size === 0 || ngrams2.size === 0) return 0;
-  
-  const intersection = new Set([...ngrams1].filter(w => ngrams2.has(w)));
-  return intersection.size / Math.max(ngrams1.size, ngrams2.size);
-}
-
-function detectSummaryEcho(candidateComment: string, postText: string, coreIdea: string): { isSummary: boolean; similarity: number; details: string } {
-  // Check against core idea (most important)
-  const coreSim = calculateTextSimilarity(candidateComment, coreIdea);
-  const coreNgram = calculateNgramOverlap(candidateComment, coreIdea, 3);
-  
-  // Check against full post
-  const postSim = calculateTextSimilarity(candidateComment, postText);
-  const postNgram = calculateNgramOverlap(candidateComment, postText, 3);
-  
-  // Thresholds tuned for summary detection
-  const isSummary = coreSim > 0.35 || coreNgram > 0.25 || postNgram > 0.2;
-  
-  return {
-    isSummary,
-    similarity: Math.max(coreSim, coreNgram, postNgram),
-    details: `coreJaccard=${coreSim.toFixed(2)}, coreNgram=${coreNgram.toFixed(2)}, postNgram=${postNgram.toFixed(2)}`
-  };
-}
-
 export async function evaluateCommentQuality(
   postText: string,
   platform: string,
@@ -95,8 +44,9 @@ Ask: "Does this comment feel like it could only reasonably have been written aft
 If it could easily be moved to many unrelated posts, reject it.
 </criterion>
 
-<criterion id="2" name="Strict Zero-Summary & Anti-Echo Audit">
-RUTHLESSLY REJECT any comment that summarizes, rephrases, mirrors, or echoes the author's core idea, claims, or post premise.
+<criterion id="2" name="Respond Rather Than Summarize">
+Reject a comment whose only function is to summarize or rephrase the author's point.
+Allow a brief reaction that names a specific detail from the post and sounds like a natural reply.
 
 Audit steps for summary detection:
 1. Compare candidate comment against POST CORE IDEA and ORIGINAL POST.
@@ -104,7 +54,7 @@ Audit steps for summary detection:
 3. Does the comment start by repeating the author's premise before adding a point?
 4. Is the comment essentially an echo: "I agree, [rephrased post point] is true"?
 
-If ANY of these are true:
+If the comment has no response beyond a restatement:
 - Set checks.isNotSummary = false.
 - The verdict MUST NOT be PASS.
 - If a non-summary angle can be salvaged, set verdict: 'REGENERATE' with explicit instructions: "Remove post restatement/summary. State ONLY the added nuance or observation."
@@ -170,9 +120,7 @@ A question should PASS only if:
 </criterion>
 
 <criterion id="10" name="Length">
-STRICT MAXIMUM: 1.5 sentences length max (approx 8–22 words max).
-The comment must not exceed 1.5 sentences in length (1 concise sentence, or 1 sentence + short clause).
-If the comment is 2 full sentences long or overly wordy/bloated, set proportionalLength = false and demand REGENERATE with feedback to shorten it to 1.5 sentences max.
+Prefer one concise thought, usually 10–35 words. Two short sentences can be natural. If the comment exceeds 40 words or two sentences, set proportionalLength = false and demand REGENERATE.
 </criterion>
 
 <criterion id="11" name="Self-Promotion">
@@ -317,6 +265,28 @@ ${candidateComment}
   }
 
   const parsed: QualityCriticResult = response.parsedJson;
+  const requiredChecks = [
+    "understandsPost", "followsSelectedAngle", "preservesAuthorTopic", "addsNewObservation",
+    "isNotSummary", "isNotGeneric", "fails20PostTest", "personalContextIsRelevant",
+    "avoidsTopicHijacking", "avoidsSelfPromotion", "avoidsAISlop", "fitsPlatform",
+    "soundsNaturalHuman", "proportionalLength", "noFabricatedExperience",
+  ] as const;
+  if (!["PASS", "REGENERATE", "SKIP"].includes(parsed.verdict) ||
+      !parsed.checks || !Array.isArray(parsed.reasons) ||
+      parsed.reasons.some((reason) => typeof reason !== "string") ||
+      requiredChecks.some((check) => typeof parsed.checks[check] !== "boolean")) {
+    throw new Error("QualityCritic: Invalid response structure");
+  }
+
+  if (parsed.verdict === "PASS" && (
+    !parsed.checks.preservesAuthorTopic || !parsed.checks.isNotGeneric ||
+    !parsed.checks.avoidsTopicHijacking || !parsed.checks.avoidsSelfPromotion ||
+    !parsed.checks.avoidsAISlop || !parsed.checks.soundsNaturalHuman ||
+    !parsed.checks.noFabricatedExperience
+  )) {
+    parsed.verdict = "REGENERATE";
+    parsed.reasons.push("The quality checks contradict a publishable verdict.");
+  }
 
   const lowerComment = candidateComment.toLowerCase();
   const bannedCliches = [
@@ -365,17 +335,6 @@ ${candidateComment}
     parsed.reasons.push(`Contains banned AI cliche: "${foundCliche}"`);
   }
 
-  // Programmatic semantic similarity check for summary/echo detection
-  const summaryCheck = detectSummaryEcho(candidateComment, postText, analysis.coreIdea);
-  if (summaryCheck.isSummary) {
-    parsed.checks.isNotSummary = false;
-    parsed.checks.fails20PostTest = true;
-    if (parsed.verdict === "PASS") {
-      parsed.verdict = "REGENERATE";
-    }
-    parsed.reasons.push(`Semantic similarity indicates summary/echo (${summaryCheck.details})`);
-  }
-
   // Programmatic summary enforcement check
   if (parsed.checks.isNotSummary === false) {
     if (parsed.verdict === "PASS") {
@@ -386,16 +345,16 @@ ${candidateComment}
     }
   }
 
-  // Programmatic sentence & word length check (1.5 sentences max)
+  // Programmatic length check
   const words = candidateComment.split(/\s+/).filter(Boolean).length;
   const sentenceCount = candidateComment.split(/[.!?]+/).filter((s) => s.trim().length > 0).length;
-  if (sentenceCount > 2 || (sentenceCount === 2 && words > 22) || words > 28) {
+  if (sentenceCount > 2 || words > 40) {
     parsed.checks.proportionalLength = false;
     if (parsed.verdict === "PASS") {
       parsed.verdict = "REGENERATE";
     }
     parsed.reasons.push(
-      `Exceeds maximum 1.5 sentence length limit (${sentenceCount} sentences, ${words} words). Shorten to 1.5 sentences max.`
+      `Too long for a conversational reply (${sentenceCount} sentences, ${words} words).`
     );
   }
 
@@ -408,6 +367,8 @@ ${candidateComment}
     rawResponseText: response.text,
     parsedOutput: parsed,
     executionTimeMs: Date.now() - startTime,
+    providerUsed: response.providerUsed,
+    modelUsed: response.modelUsed,
   };
 
   return { result: parsed, debug };

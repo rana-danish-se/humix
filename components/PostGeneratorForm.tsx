@@ -15,7 +15,7 @@ export default function PostGeneratorForm() {
   const [result, setResult] = useState<PipelineResult | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<"generator" | "benchmarks">("generator");
-  const [showInspector, setShowInspector] = useState<boolean>(true);
+  const [showInspector, setShowInspector] = useState<boolean>(false);
   const [expandedStep, setExpandedStep] = useState<number | null>(1);
 
   const [runningBenchmarkId, setRunningBenchmarkId] = useState<string | null>(null);
@@ -226,18 +226,18 @@ export default function PostGeneratorForm() {
                 htmlFor="context"
                 className="block text-sm font-semibold text-slate-800 mb-1 flex items-center justify-between"
               >
-                <span>Additional Context (Optional)</span>
+                 <span>Your Genuine Reaction (Optional)</span>
                 <span className="text-xs font-normal text-slate-400">Optional</span>
               </label>
               <p className="text-xs text-slate-500 mb-2">
-                Provide specific background. Note: Engine will SKIP context if irrelevant to prevent topic hijacking.
+                 Add a thought you actually have about this post, or a fact you can personally verify. Leave blank if nothing comes to mind.
               </p>
               <textarea
                 id="context"
                 rows={2}
                 value={context}
                 onChange={(e) => setContext(e.target.value)}
-                placeholder="e.g., I ran into this when refactoring an internal API last month..."
+                 placeholder="e.g., The point about the first sales hire made me wonder who owns the playbook before they join."
                 className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 placeholder-slate-400 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 focus:bg-white transition-all duration-200 resize-y"
               />
             </div>
@@ -259,7 +259,7 @@ export default function PostGeneratorForm() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    <span>Executing 4 LLM Agent Pipeline...</span>
+                    <span>Drafting a comment...</span>
                   </>
                 ) : (
                   <>
@@ -313,7 +313,7 @@ export default function PostGeneratorForm() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
-                      Generated Comment (Up to 1.5 Sentences Max)
+                      Suggested Comment — Review Before Posting
                     </label>
                     <button
                       type="button"
@@ -327,7 +327,7 @@ export default function PostGeneratorForm() {
                     "{result.comment}"
                   </div>
                 </div>
-              ) : (
+              ) : result.status === "SKIP" ? (
                 <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/50 text-amber-900 text-sm space-y-1">
                   <div className="font-bold flex items-center space-x-2">
                     <span>💡 System Recommendation: SKIP THIS POST</span>
@@ -335,6 +335,11 @@ export default function PostGeneratorForm() {
                   <p className="text-amber-800 font-normal">
                     {result.critic.critiqueSummary || result.contribution.skipReason}
                   </p>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/50 text-amber-900 text-sm space-y-1">
+                  <div className="font-bold">No publishable draft yet</div>
+                  <p>{result.critic.critiqueSummary || "Try again or write a reply yourself."}</p>
                 </div>
               )}
 
