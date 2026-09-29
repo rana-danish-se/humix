@@ -15,7 +15,8 @@ export async function evaluateCommentQuality(
   analysis: PostAnalysisResult,
   contribution: ContributionResult,
   provider: LLMProvider = "openrouter",
-  model: string = "qwen/qwen3-30b-a3b-instruct-2507"
+  model: string = "qwen/qwen3-30b-a3b-instruct-2507",
+  userAdditionalContext?: string
 ): Promise<{ result: QualityCriticResult; debug: LLMStepDebug }> {
   const startTime = Date.now();
   const systemPrompt = `You are reviewing a proposed social media comment for a real person to post under their own name.
@@ -36,6 +37,7 @@ CORE IDEA: ${analysis.coreIdea}
 SELECTED ANGLE: ${contribution.angleExplanation || "None"}
 PERSONALIZATION LEVEL: ${contribution.personalizationLevel}
 TOPIC HIJACK RISK: ${contribution.topicHijackRisk}
+USER-PROVIDED CONTEXT: ${userAdditionalContext || "None"}
 CANDIDATE:
 """${candidateComment}"""`;
 
@@ -56,7 +58,7 @@ CANDIDATE:
     throw new Error("QualityCritic: Invalid response structure");
   }
 
-  const deterministicIssues = validateComment(candidateComment, postText).issues;
+  const deterministicIssues = validateComment(candidateComment, postText, userAdditionalContext).issues;
   if (deterministicIssues.length > 0) {
     if (parsed.verdict === "PASS") parsed.verdict = "REGENERATE";
     if (deterministicIssues.some((issue) => issue.includes("formulaic") || issue.includes("cliché"))) {

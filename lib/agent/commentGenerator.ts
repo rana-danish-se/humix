@@ -43,7 +43,7 @@ function wordsIn(text: string): string[] {
   return (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
 }
 
-export function validateComment(comment: string, postText: string = ""): { valid: boolean; issues: string[] } {
+export function validateComment(comment: string, postText: string = "", userAdditionalContext: string = ""): { valid: boolean; issues: string[] } {
   const issues: string[] = [];
   const normalized = comment.replace(/[’‘]/g, "'").replace(/[—–]/g, ", ");
   const lower = normalized.toLowerCase();
@@ -77,6 +77,9 @@ export function validateComment(comment: string, postText: string = ""): { valid
   }
   if (/\b(?:ivoro|DM me|book a call|check out (?:my|our)|my (?:service|agency)|our (?:service|agency))\b/i.test(comment)) {
     issues.push("Contains unsolicited self-promotion");
+  }
+  if (!userAdditionalContext.trim() && /\b(?:I|we|my|our)\b/i.test(normalized)) {
+    issues.push("Uses a first-person claim without user-provided context");
   }
   if (/\b(?:everyone|everybody|every (?:deal|founder)|most (?:founders|people))\b/i.test(normalized)) {
     issues.push("Makes a broad claim that the post does not establish");
@@ -187,7 +190,7 @@ ${postText}
     for (const candidate of candidates) {
       const rawComment = candidate.trim();
       if (!rawComment) continue;
-      const validation = validateComment(rawComment, postText);
+      const validation = validateComment(rawComment, postText, userAdditionalContext);
       lastCandidate = rawComment;
       if (validation.valid) validCandidates.push(rawComment);
       else issues.push(...validation.issues);
@@ -205,7 +208,7 @@ ${postText}
             ? "anthropic/claude-sonnet-4.6"
             : "openai/gpt-5.4-mini";
           const review = await callModel("openrouter", editorModel, {
-            systemPrompt: `You are a strict human editor choosing one LinkedIn reply. Rate from 0 to 10. An 8 means you would comfortably post it yourself: natural, specific to the author's situation, grounded, and adding a small reaction, question, or implication. A 5 is generic praise, paraphrase, polished AI phrasing, or a forced insight. Reject invented experience and copied wording. For a humorous post, a small playful extension beats a serious moral. Prefer simple language over clever language. Pick the strongest candidate only if it reaches 8. Return JSON: {"bestIndex": number or -1, "score": number, "reason": string}.`,
+            systemPrompt: `You are a strict human editor choosing one LinkedIn reply. Rate from 0 to 10. An 8 means you would comfortably post it yourself: natural, specific to the author's situation, grounded, and adding a small reaction, question, or implication. A 5 is generic praise, paraphrase, polished AI phrasing, or a forced insight. Reject invented experience and copied wording. If USER CONTEXT is None, first-person claims such as "I've heard that many times" are invented and must score below 8. For a humorous post, a small playful extension beats a serious moral. Prefer simple language over clever language. Pick the strongest candidate only if it reaches 8. Return JSON: {"bestIndex": number or -1, "score": number, "reason": string}.`,
             userPrompt: `POST:\n${postText}\n\nUSER CONTEXT:\n${userAdditionalContext || "None"}\n\nCANDIDATES:\n${JSON.stringify(validCandidates)}`,
             temperature: 0,
             maxTokens: 180,

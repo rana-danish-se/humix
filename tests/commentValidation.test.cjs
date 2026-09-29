@@ -29,6 +29,8 @@ assert.equal(moduleExports.validateComment("The phrase 'without complaining' say
 assert.equal(moduleExports.validateComment("Winning the endurance contest is rarely freedom for anyone.", post).valid, false);
 assert.equal(moduleExports.validateComment("The idea that silence becomes a performance metric is quietly terrifying.", post).valid, false);
 assert.equal(moduleExports.validateComment("That line about working every weekend after framing it in your mind—shows how performance feedback can quietly rewrite your sense of self.", post).valid, false);
+assert.equal(moduleExports.validateComment("I’ve heard that excuse so many times it might as well be in the employee handbook.", "At work, people excuse missing a question by saying they were multitasking.").valid, false);
+assert.equal(moduleExports.validateComment("I get asked whether fixing a website will bring customers.", "People check businesses online before calling.", "My clients often ask whether fixing a website will bring customers.").valid, true);
 
 const businessPost = "Growing the business means investing in processes that free up the owner's time. Keeping it alive can mean the owner fights fires all day instead. Both take effort, but they lead to different outcomes.";
 const ungrounded = "It’s strange how survival mode can feel urgent even when it’s just the same tasks over and over, making exhaustion invisible until it’s too late.";

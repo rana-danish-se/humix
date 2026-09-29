@@ -265,7 +265,8 @@ export async function runCommentIntelligencePipeline(
     analysis,
     contribution,
     criticProv,
-    criticMod
+    criticMod,
+    userAdditionalContext
   );
   let critic = criticData.result;
   stepDebugLogs.push(criticData.debug);
@@ -298,7 +299,8 @@ export async function runCommentIntelligencePipeline(
       analysis,
       contribution,
       criticProv,
-      criticMod
+      criticMod,
+      userAdditionalContext
     );
     critic = criticData.result;
     stepDebugLogs.push({
