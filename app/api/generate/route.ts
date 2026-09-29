@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       platform === "Reddit" || platform === "Facebook" ? platform : "LinkedIn";
     const selectedProvider: LLMProvider = provider === "gemini" ? "gemini" : "openrouter";
     const selectedModel: string =
-      model || (selectedProvider === "gemini" ? "gemini-flash-lite-latest" : "qwen/qwen3-30b-a3b-instruct-2507");
+      model || (selectedProvider === "gemini" ? "gemini-flash-lite-latest" : "anthropic/claude-sonnet-4.6");
 
     const result = await runCommentIntelligencePipeline(
       post.trim(),

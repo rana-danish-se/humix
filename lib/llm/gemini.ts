@@ -23,6 +23,7 @@ export async function callGemini(
     ],
     generationConfig: {
       temperature: request.temperature ?? 0.3,
+      maxOutputTokens: Math.min(Math.max(request.maxTokens ?? 900, 128), 2000),
     },
   };
 

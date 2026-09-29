@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:comments": "node tests/commentValidation.test.cjs"
+    "test:comments": "node tests/commentValidation.test.cjs && node tests/openrouter.test.cjs"
   },
   "dependencies": {
     "next": "16.3.4",

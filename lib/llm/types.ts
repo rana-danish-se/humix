@@ -9,6 +9,7 @@ export interface LLMRequest {
   systemPrompt: string;
   userPrompt: string;
   temperature?: number;
+  maxTokens?: number;
   responseFormat?: "json" | "text";
 }
 
@@ -89,6 +90,9 @@ export interface CommentGenerationResult {
   comment: string;
   wordCount: number;
   sentenceCount: number;
+  editorScore?: number;
+  editorReason?: string;
+  editorModelUsed?: string;
 }
 
 export interface QualityCriticResult {
@@ -141,6 +145,7 @@ export interface PipelineResult {
     providerUsed: LLMProvider;
     criticModelUsed?: string;
     criticProviderUsed?: LLMProvider;
+    editorScore?: number;
     executionTimeMs: number;
   };
 }

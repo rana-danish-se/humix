@@ -15,7 +15,7 @@ export default function PostGeneratorForm() {
   const [platform, setPlatform] = useState<PlatformType>("LinkedIn");
   const [context, setContext] = useState<string>("");
   const [provider, setProvider] = useState<"gemini" | "openrouter">("openrouter");
-  const [model, setModel] = useState<string>("qwen/qwen3-30b-a3b-instruct-2507");
+  const [model, setModel] = useState<string>("anthropic/claude-sonnet-4.6");
 
   const [loading, setLoading] = useState<boolean>(false);
   const [result, setResult] = useState<PipelineResult | null>(null);
@@ -141,7 +141,7 @@ export default function PostGeneratorForm() {
             onChange={(e) => {
               const p = e.target.value as "gemini" | "openrouter";
               setProvider(p);
-              setModel(p === "gemini" ? "gemini-flash-lite-latest" : "qwen/qwen3-30b-a3b-instruct-2507");
+              setModel(p === "gemini" ? "gemini-flash-lite-latest" : "anthropic/claude-sonnet-4.6");
             }}
             className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-medium cursor-pointer"
           >
@@ -162,6 +162,8 @@ export default function PostGeneratorForm() {
               </>
             ) : (
               <>
+                <option value="anthropic/claude-sonnet-4.6">✍️ Claude Sonnet 4.6 (Quality)</option>
+                <option value="openai/gpt-5.4-mini">GPT-5.4 Mini</option>
                 <option value="qwen/qwen3-30b-a3b-instruct-2507">⚡ Qwen3 30B (Fast)</option>
                 <option value="deepseek/deepseek-chat">DeepSeek Chat</option>
                 <option value="meta-llama/llama-3.3-70b-instruct">🦙 Llama 3.3 70B (Instruct)</option>
@@ -303,6 +305,19 @@ export default function PostGeneratorForm() {
                   <span className="text-xs text-slate-400">
                     Total Time: {result.metadata.executionTimeMs}ms
                   </span>
+                  <span className="text-xs text-slate-500">
+                    Writer: {result.metadata.modelUsed}
+                  </span>
+                  {result.metadata.editorScore !== undefined && (
+                    <span className="text-xs text-slate-500">
+                      Editor estimate: {result.metadata.editorScore}/10
+                    </span>
+                  )}
+                  {result.metadata.criticModelUsed && (
+                    <span className="text-xs text-slate-500">
+                      Editor: {result.metadata.criticModelUsed}
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center space-x-2 text-xs">
@@ -393,12 +408,12 @@ export default function PostGeneratorForm() {
                       </h4>
                     </div>
                     <span className="text-xs text-slate-400 font-mono">
-                      {result.stepDebugLogs.length} LLM Calls Executed
+                      {result.stepDebugLogs.length} Pipeline Steps Shown
                     </span>
                   </div>
 
                   <p className="text-xs text-slate-400">
-                    Inspect exact System Prompts, User Prompts, Raw Model Responses, and Parsed JSON outputs for each pipeline agent to evaluate prompt performance.
+                    Inspect prompts, model responses, and parsed outputs for each shown pipeline step.
                   </p>
 
                   <div className="space-y-3 pt-1">

@@ -21,7 +21,7 @@ export async function evaluateCommentQuality(
   const systemPrompt = `You are reviewing a proposed social media comment for a real person to post under their own name.
 Judge the exact wording, not how clever it sounds. A brief reaction to one concrete fact in the post is enough; a new insight is not required. Mark isNotSummary true for that kind of reaction when it does not condense or rephrase the whole post.
 
-PASS only if it clearly responds to this post, includes a specific detail from the original post, sounds like a natural conversation, and is safe to publish as written. Generic words such as "business", "people", or "work" are not specific details.
+PASS only if it clearly responds to a specific situation in this post, sounds like a natural conversation, and is safe to publish as written. A reply can extend the situation with a small joke or implication without reusing the post's words.
 REGENERATE if the angle is useful but the wording is generic, formulaic, wordy, awkward, or too polished.
 SKIP if the angle itself is forced, promotional, fabricated, unrelated, or disrespectful.
 
@@ -43,6 +43,7 @@ CANDIDATE:
     systemPrompt,
     userPrompt,
     temperature: 0.1,
+    maxTokens: 500,
     responseFormat: "json",
   });
 

@@ -2,14 +2,42 @@ import { analyzePost } from "./postAnalyzer";
 import { analyzeContribution } from "./contributionAnalyzer";
 import { generateCommentCandidate } from "./commentGenerator";
 import { evaluateCommentQuality } from "./qualityCritic";
-import { LLMProvider, LLMStepDebug, PipelineResult, PlatformType, PostAnalysisResult } from "@/lib/llm";
+import { LLMProvider, LLMStepDebug, PipelineResult, PlatformType, PostAnalysisResult, QualityCriticResult, CommentGenerationResult } from "@/lib/llm";
 
 function getCriticProvider(): LLMProvider {
   return "openrouter";
 }
 
 function getCriticModel(): string {
-  return "qwen/qwen3-30b-a3b-instruct-2507";
+  return "openai/gpt-5.4-mini";
+}
+
+function editorReview(generation: CommentGenerationResult): QualityCriticResult {
+  const passed = typeof generation.editorScore === "number" && generation.editorScore >= 8;
+  const reason = generation.editorReason || "No draft met the quality editor's 8/10 threshold.";
+  return {
+    verdict: passed ? "PASS" : "REGENERATE",
+    score: Math.round((generation.editorScore || 0) * 10),
+    reasons: [reason],
+    critiqueSummary: reason,
+    checks: {
+      understandsPost: passed,
+      followsSelectedAngle: passed,
+      preservesAuthorTopic: passed,
+      addsNewObservation: passed,
+      isNotSummary: passed,
+      isNotGeneric: passed,
+      fails20PostTest: !passed,
+      personalContextIsRelevant: passed,
+      avoidsTopicHijacking: passed,
+      avoidsSelfPromotion: passed,
+      avoidsAISlop: passed,
+      fitsPlatform: passed,
+      soundsNaturalHuman: passed,
+      proportionalLength: passed,
+      noFabricatedExperience: passed,
+    },
+  };
 }
 
 function validatePostAnalysis(analysis: PostAnalysisResult, postText: string): { valid: boolean; issues: string[] } {
@@ -91,9 +119,12 @@ export async function runCommentIntelligencePipeline(
 
   const criticProv = criticProvider || getCriticProvider();
   const criticMod = criticModel || getCriticModel();
+  const planningModel = provider === "openrouter" && model === "anthropic/claude-sonnet-4.6"
+    ? "qwen/qwen3-30b-a3b-instruct-2507"
+    : model;
 
   // 1. Analyze Post (with validation retry)
-  let postAnalysisData = await analyzePost(postText, platform, provider, model);
+  let postAnalysisData = await analyzePost(postText, platform, provider, planningModel);
   let analysis = postAnalysisData.result;
   stepDebugLogs.push(postAnalysisData.debug);
 
@@ -101,7 +132,7 @@ export async function runCommentIntelligencePipeline(
   let analysisValidation = validatePostAnalysis(analysis, postText);
   if (!analysisValidation.valid) {
     console.warn(`[Pipeline] PostAnalysis validation failed: ${analysisValidation.issues.join("; ")}. Retrying...`);
-    postAnalysisData = await analyzePost(postText, platform, provider, model);
+    postAnalysisData = await analyzePost(postText, platform, provider, planningModel);
     analysis = postAnalysisData.result;
     stepDebugLogs.push({
       ...postAnalysisData.debug,
@@ -122,7 +153,7 @@ export async function runCommentIntelligencePipeline(
     analysis,
     userAdditionalContext,
     provider,
-    model
+    planningModel
   );
   const contribution = contributionData.result;
   if (typeof contribution.shouldSkip !== "boolean" ||
@@ -181,10 +212,50 @@ export async function runCommentIntelligencePipeline(
     analysis,
     contribution,
     provider,
-    model
+    model,
+    userAdditionalContext
   );
   let generation = generationData.result;
   stepDebugLogs.push(generationData.debug);
+
+  // Quality mode uses one independent editor to compare all candidates. Its
+  // calibrated decision replaces the redundant per-candidate critic call.
+  if (model === "anthropic/claude-sonnet-4.6" || model === "openai/gpt-5.4-mini") {
+    if ((generation.editorScore || 0) < 8 && !generation.editorReason?.includes("unavailable")) {
+      generationData = await generateCommentCandidate(
+        postText,
+        platform,
+        analysis,
+        {
+          ...contribution,
+          angleExplanation: `${contribution.angleExplanation}\n\nEDITOR FEEDBACK TO FIX: ${generation.editorReason || "Make the reply more natural and specific."}`,
+        },
+        provider,
+        model,
+        userAdditionalContext
+      );
+      generation = generationData.result;
+      stepDebugLogs.push({ ...generationData.debug, stepIndex: 3.5, stepName: "Candidate Regeneration (Retry)" });
+    }
+    const critic = editorReview(generation);
+    return {
+      status: critic.verdict,
+      comment: critic.verdict === "PASS" ? generation.comment : undefined,
+      analysis,
+      contribution,
+      critic,
+      stepDebugLogs,
+      metadata: {
+        platform,
+        modelUsed: generationData.debug.modelUsed || model,
+        providerUsed: generationData.debug.providerUsed || provider,
+        criticModelUsed: generation.editorModelUsed,
+        criticProviderUsed: generation.editorModelUsed ? "openrouter" : undefined,
+        editorScore: generation.editorScore,
+        executionTimeMs: Date.now() - startTime,
+      },
+    };
+  }
 
   // 4. Quality Critic & Anti-Slop Audit
   let criticData = await evaluateCommentQuality(
@@ -210,7 +281,8 @@ export async function runCommentIntelligencePipeline(
         angleExplanation: `${contribution.angleExplanation}\n\nCRITIC FEEDBACK TO FIX IN THIS RETRY:\nSummary: ${critic.critiqueSummary}\nIssues to resolve: ${critic.reasons.join("; ")}`,
       },
       provider,
-      model
+      model,
+      userAdditionalContext
     );
     generation = generationData.result;
     stepDebugLogs.push({
@@ -251,6 +323,7 @@ export async function runCommentIntelligencePipeline(
       providerUsed: generationData.debug.providerUsed || provider,
       criticModelUsed: criticData.debug.modelUsed || criticMod,
       criticProviderUsed: criticData.debug.providerUsed || criticProv,
+      editorScore: generation.editorScore,
       executionTimeMs: Date.now() - startTime,
     },
   };

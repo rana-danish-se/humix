@@ -10,11 +10,10 @@ export async function callOpenRouter(
   }
 
   const modelSlug = model && model.trim() ? model.trim() : "qwen/qwen3-30b-a3b-instruct-2507";
-  const fallbackModels = [
-    "meta-llama/llama-3.3-70b-instruct",
-    "qwen/qwen3-30b-a3b-instruct-2507",
-    "deepseek/deepseek-chat",
-  ].filter((candidate) => candidate !== modelSlug);
+  const fallbackModels = (modelSlug === "anthropic/claude-sonnet-4.6"
+    ? ["openai/gpt-5.4-mini", "qwen/qwen3-30b-a3b-instruct-2507", "meta-llama/llama-3.3-70b-instruct"]
+    : ["qwen/qwen3-30b-a3b-instruct-2507", "meta-llama/llama-3.3-70b-instruct", "deepseek/deepseek-chat"]
+  ).filter((candidate) => candidate !== modelSlug);
 
   const payload: any = {
     model: modelSlug,
@@ -30,6 +29,7 @@ export async function callOpenRouter(
       },
     ],
     temperature: request.temperature ?? 0.3,
+    max_tokens: Math.min(Math.max(request.maxTokens ?? 900, 128), 2000),
   };
 
   if (request.responseFormat === "json") {

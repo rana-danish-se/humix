@@ -43,14 +43,6 @@ function wordsIn(text: string): string[] {
   return (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
 }
 
-const GENERIC_ANCHOR_WORDS = new Set([
-  "about", "after", "again", "being", "could", "every", "going", "other", "people",
-  "really", "should", "since", "something", "still", "their", "there", "these",
-  "thing", "things", "those", "would", "where", "which", "while", "because",
-  "business", "company", "working", "story", "today", "years",
-  "doing", "growing", "feeling", "making", "become", "becomes", "feels",
-]);
-
 export function validateComment(comment: string, postText: string = ""): { valid: boolean; issues: string[] } {
   const issues: string[] = [];
   const normalized = comment.replace(/[’‘]/g, "'").replace(/[—–]/g, ", ");
@@ -96,12 +88,6 @@ export function validateComment(comment: string, postText: string = ""): { valid
   if (postText) {
     const postWords = wordsIn(postText);
     const commentWords = wordsIn(comment);
-    if (postWords.length >= 20) {
-      const anchors = new Set(postWords.filter((word) => word.length >= 5 && !GENERIC_ANCHOR_WORDS.has(word)));
-      if (anchors.size > 0 && !commentWords.some((word) => anchors.has(word))) {
-        issues.push("Does not refer to a specific detail from the original post");
-      }
-    }
     const postPhrases = new Set<string>();
     for (let index = 0; index <= postWords.length - 5; index++) {
       postPhrases.add(postWords.slice(index, index + 5).join(" "));
@@ -129,245 +115,27 @@ export async function generateCommentCandidate(
   analysis: PostAnalysisResult,
   contribution: ContributionResult,
   provider: LLMProvider = "gemini",
-  model: string = "gemini-flash-lite-latest"
+  model: string = "gemini-flash-lite-latest",
+  userAdditionalContext?: string
 ): Promise<{ result: CommentGenerationResult; debug: LLMStepDebug }> {
   const startTime = Date.now();
 
-  const systemPrompt = `<system_prompt>
-<role>You are an expert Social Comment Writer for a thoughtful human professional.</role>
+  const systemPrompt = `You write possible social media replies for a real person to review before posting. Sound like a person speaking to the author, not a content creator performing insight.
 
-<task>
-Suggest three distinctly worded comments for this post. The system will select one safe draft for the user to review.
-Each should sound like something a real person would naturally type after reading the post — not like a content strategist, copywriter, motivational speaker, or AI trying to demonstrate intelligence.
-</task>
+Return JSON with a comments array of four different strings. Each reply should be 6–25 words, at most two short sentences. Put the strongest option first. If there is no genuine opening, return an empty array.
 
-<core_objective>
-Write a short, natural comment that:
-1. Clearly belongs under THIS specific post.
-2. Follows the contribution direction selected by Step 2.
-3. Adds a genuine conversational contribution when one exists.
-4. Sounds like the user's natural voice rather than polished thought-leadership copy.
-5. Never invents personal experience, expertise, facts, or opinions.
-6. Never hijacks the author's topic.
+Read the original post first. Use the analysis and selected angle only as hints; ignore any claim in them that the post does not support. Use the user's optional context only for facts they actually supplied. Never invent their experience, clients, opinion, or credentials. Never mention Ivoro or pitch services unless asked.
+When the user supplies a genuine reaction or recurring client question, make at least one candidate use that exact perspective in plain language. Do not claim it proves a result or guarantees customers.
 
-A simple, specific observation is better than an impressive-sounding one.
-Do not try to sound profound.
-Do not try to sound exceptionally intelligent.
-Do not manufacture "insight" for the sake of appearing insightful.
-</core_objective>
+Give each option a small reason to exist beyond agreement: a practical implication, a specific question the author could answer, a gentle joke, or a plain reaction to a concrete detail. Do not simply summarize the post with fresh synonyms. A reaction can be enough; do not force a lesson.
 
-<guidelines>
-<step2_constraint>
-Use the Step 2 output as the conversational direction:
-- Follow selectedAngle.
-- Use angleExplanation as the underlying thought.
-- Respect personalizationLevel.
-- Respect topicHijackRisk.
-- If personalizationLevel = 0, do not inject the user's professional background.
-- If topicHijackRisk = true, do not use the user's professional background to create the comment.
+Match the author's tone. For a humorous post, be lightly playful and do not turn the joke into a moral. For a personal story, respond to what the author actually described without diagnosing their feelings. For business advice, focus on a real practical tension instead of a generic takeaway.
 
-If the angleExplanation adds a motive, feeling, or outcome absent from the original post, drop that part and respond to a concrete detail in the post instead.
-Do not invent a completely different contribution angle.
-Do not simply rewrite angleExplanation into a more polished form.
-Turn the underlying idea into something a person would naturally say.
-</step2_constraint>
+Do not quote or copy a sentence from the post. You may refer to its situation in your own words. Do not open with 'that line', 'the part about', 'the idea that', 'it's wild how', or 'the real'. Avoid 'really hits', 'quietly', dramatic metaphors, broad claims, and neat X-versus-Y endings. Avoid questions asked only for engagement.
 
-<length_constraint>
-Aim for one natural thought, usually 10–25 words. Never exceed 40 words or two short sentences.
+Calibration: A reply like 'The real magic is how multitasking gets treated like a harmless confession' is weak because it restates the author's joke. A short reply such as 'Imagine trying that excuse at dinner' is stronger because it extends the situation naturally. Do not reuse either sentence; apply the distinction to this post.
 
-The comment must be concise and punchy:
-- Either 1 complete, focused sentence.
-- Or two short sentences when that is how a person would naturally reply.
-
-Use fewer words when the thought is complete.
-Never add filler just to reach a word count.
-Do not create artificial sentence complexity.
-</length_constraint>
-
-<specificity>
-Anchor the comment to ONE specific idea, detail, example, tension, or implication from the post.
-The comment should feel written for this exact post.
-Include one concrete noun or specific detail from the original post in your own sentence. Broad words such as "business", "people", "work", and "doing" do not count.
-Do not quote a line from the post, reuse its phrasing, or open with "That line hits different" or "When you realize". Refer to the idea in your own plain words.
-Do not open by pointing at the author's wording ("That line hits hard", "The part about...", "The idea that..."). Address the person and idea directly.
-
-MENTAL TEST:
-"If I pasted this exact comment under 10 unrelated posts, would it still work?"
-If yes, the comment is too generic. Rewrite it.
-</specificity>
-
-<strict_anti_summary_rules>
-CRITICAL ANTI-SUMMARY & ANTI-ECHO DIRECTIVES:
-
-1. DO NOT SUBSTITUTE A SUMMARY FOR A RESPONSE:
-- A comment should respond to a specific point rather than condense the whole post.
-- Naming a detail, then restating its implication with fresh synonyms, is still a summary.
-- Never write "You said X, and that's true because Y" or "Doing X is so important for Y" when X is the post's main point.
-- The author already wrote the post; they do NOT need a condensed or rephrased version of their own thoughts in their comment section.
-
-2. NO MIRRORING PREMISES OR CONTEXT CLAUSES:
-- Do NOT begin the comment by restating the post's context or setup (e.g., "When building sales teams...", "Automating a broken process...").
-- Jump IMMEDIATELY into the specific added nuance, edge case, or observation without setting up the author's premise.
-
-3. CONVERSATION TEST:
-- A brief, specific reaction can be enough. Do not manufacture a new lesson to sound insightful.
-- A plain reaction to a concrete fact, such as the duration or effort the author describes, is valid even without a new insight. Do not turn it into a theory about what the fact secretly means.
-- If the comment merely rewrites the premise, add a genuine reaction or choose to skip.
-
-4. NO REFRESHED SYNONYMS:
-- Do not attempt to bypass this rule by replacing the author's key terms with synonyms while keeping the underlying restatement intact.
-- Do not add a dramatic second sentence merely to make a summary sound original.
-</strict_anti_summary_rules>
-
-<what_counts_as_contribution>
-A contribution can be:
-- a useful nuance
-- a relevant observation
-- a practical implication
-- a meaningful distinction
-- an additional example
-- a reasonable alternative interpretation
-- respectful disagreement
-- a genuinely relevant question
-- a brief reaction to a specific idea when it adds something beyond generic praise
-
-"New information" is NOT required.
-Do not manufacture novelty simply to appear insightful.
-</what_counts_as_contribution>
-
-<authenticity>
-NEVER invent or imply firsthand proof from Ivoro's general capability profile:
-- personal experiences
-- clients
-- projects
-- results
-- conversations
-- statistics
-- credentials
-- beliefs
-- emotions
-- professional experiences
-
-If personalization would require inventing something, do not personalize.
-Never write "I've seen this myself" unless that experience is explicitly available in the provided user context.
-Do not mention Ivoro, its services, clients, projects, or results in this comment.
-The user's professional background can help select a relevant idea, but is not a reason to claim expertise in the comment.
-Do not guess what the author feels, fears, or intends. Only refer to an emotion or motive when the post states it.
-</authenticity>
-
-<tone>
-Use direct, conversational, grounded language.
-Prefer the way a thoughtful professional would actually speak in a conversation.
-Avoid polished essay language, motivational-speaker language, corporate language, and exaggerated intellectual phrasing.
-Do not add a metaphor or analogy that the author did not use. Avoid sweeping claims about what founders or businesses often do.
-Avoid dramatic endings about drowning, carrying weight, hidden costs, or what "really" matters. Say the thought plainly.
-Do not turn a concrete detail into an unsupported claim about identity, psychological change, or what the author learned.
-
-Natural does NOT mean grammatically sloppy.
-Do not intentionally add mistakes, awkwardness, or filler to simulate humanity.
-</tone>
-
-<platform_conventions>
-LinkedIn:
-- conversational and thoughtful
-- concise
-- professional without sounding corporate
-- no fake thought leadership
-- no engagement bait
-
-Reddit:
-- direct
-- specific
-- conversational
-- grounded
-- no LinkedIn-style polish
-- no expert flexing
-- participate in the community's actual discussion style
-
-Facebook:
-- warm
-- simple
-- natural
-- less analytical unless the post itself is analytical
-</platform_conventions>
-
-<banned_ai_language>
-Never use phrases such as:
-"Couldn't agree more"
-"Well said"
-"Love this"
-"Great point"
-"This is so important"
-"This really resonates"
-"Here's the thing"
-"What most people miss"
-"Let that sink in"
-"The hard truth"
-"Spot on"
-"Absolutely"
-"So true"
-"Couldn't have said it better"
-"Thanks for sharing"
-"Such a great reminder"
-
-Also avoid formulaic constructions such as:
-"It's not X, it's Y."
-"X isn't about Y, it's about Z."
-"The real X is..."
-"At the end of the day..."
-"This is a powerful reminder that..."
-"One thing that stands out to me..."
-"This speaks to..."
-"There's something really interesting about..."
-
-Do not use these simply as substitutes for the banned phrases.
-</banned_ai_language>
-
-<praise_rules>
-Do not praise the author merely for posting.
-If positive reaction is appropriate, connect it to a specific idea.
-
-Bad: "Great insight on storytelling."
-Better: "The distinction between having all the ingredients and actually giving them an order is what makes this analogy work."
-However, do not merely repeat the author's analogy either; add something.
-</praise_rules>
-
-<question_rules>
-Do not end with a question by default.
-Only ask a question when:
-- the post genuinely invites discussion,
-- the question follows naturally from the contribution,
-- and asking it adds more value than making a statement.
-
-Never ask a question solely to increase engagement.
-</question_rules>
-</guidelines>
-
-<final_quality_check>
-Before returning the comment, silently check:
-1. Is this clearly about THIS post?
-2. Does it add something rather than summarize?
-3. Is the contribution supported by the post or provided user context?
-4. Did I invent anything?
-5. Did I force the user's profession into the discussion?
-6. Does it sound like a real person would actually write this?
-7. Could this exact comment fit many unrelated posts?
-8. Am I trying too hard to sound insightful?
-9. Did I use a cliché or AI-style phrase?
-10. Would the user feel comfortable attaching their name to this comment?
-11. Is the comment brief enough to sound like a reply rather than a mini-post?
-
-If any answer is unfavorable, rewrite before returning.
-</final_quality_check>
-
-<output_format>
-Return JSON with EXACTLY this structure. Make all three options plain and understated, and put the shortest natural option first. Each option must add a distinct response instead of restating the post. Do not reuse a contrast formula such as "It's not X, it's Y" or "The real X is Y":
-
-{
-  "comments": ["First option", "Second option", "Third option"]
-}
-</output_format>
-</system_prompt>`;
+Return only JSON: {"comments":["...","...","...","..."]}.`;
 
   const userPrompt = `PLATFORM: ${platform}
 POST SUBJECT: ${analysis.subject}
@@ -377,6 +145,7 @@ ANGLE EXPLANATION: ${contribution.angleExplanation}
 PERSONALIZATION LEVEL: Level ${contribution.personalizationLevel}
 TOPIC HIJACK RISK: ${contribution.topicHijackRisk}
 ALLOWED PERSONAL CONTEXT SNIPPET: ${contribution.relevantContextSnippet || "None (Level 0 - Do not inject tech/personal background)"}
+USER'S OWN REACTION OR EXPERIENCE: ${userAdditionalContext || "None supplied"}
 
 ORIGINAL POST TEXT:
 """
@@ -398,6 +167,7 @@ ${postText}
       systemPrompt,
       userPrompt: attempts === 1 ? userPrompt : `${userPrompt}\n\nPREVIOUS ATTEMPT FAILED VALIDATION:\n${lastResponse}\n\nFix the issues above and try again.`,
       temperature: 0.15,
+      maxTokens: 450,
       responseFormat: "json",
     });
     lastRawResponseText = response.text;
@@ -413,38 +183,78 @@ ${postText}
     }
 
     const issues: string[] = [];
+    const validCandidates: string[] = [];
     for (const candidate of candidates) {
       const rawComment = candidate.trim();
       if (!rawComment) continue;
       const validation = validateComment(rawComment, postText);
       lastCandidate = rawComment;
+      if (validation.valid) validCandidates.push(rawComment);
+      else issues.push(...validation.issues);
+    }
 
-      if (validation.valid) {
-        const words = rawComment.split(/\s+/).filter(Boolean).length;
-        const sentences = rawComment.split(/[.!?]+/).filter((s: string) => s.trim().length > 0).length;
-
-        const parsedResult: CommentGenerationResult = {
-          comment: rawComment,
-          wordCount: words,
-          sentenceCount: sentences,
-        };
-
-        const debug: LLMStepDebug = {
+    if (validCandidates.length > 0) {
+      let chosen = validCandidates[0];
+      let editorScore: number | undefined;
+      let editorReason: string | undefined;
+      let editorModelUsed: string | undefined;
+      const useEditor = model === "anthropic/claude-sonnet-4.6" || model === "openai/gpt-5.4-mini";
+      if (useEditor) {
+        try {
+          const editorModel = response.modelUsed === "openai/gpt-5.4-mini"
+            ? "anthropic/claude-sonnet-4.6"
+            : "openai/gpt-5.4-mini";
+          const review = await callModel("openrouter", editorModel, {
+            systemPrompt: `You are a strict human editor choosing one LinkedIn reply. Rate from 0 to 10. An 8 means you would comfortably post it yourself: natural, specific to the author's situation, grounded, and adding a small reaction, question, or implication. A 5 is generic praise, paraphrase, polished AI phrasing, or a forced insight. Reject invented experience and copied wording. For a humorous post, a small playful extension beats a serious moral. Prefer simple language over clever language. Pick the strongest candidate only if it reaches 8. Return JSON: {"bestIndex": number or -1, "score": number, "reason": string}.`,
+            userPrompt: `POST:\n${postText}\n\nUSER CONTEXT:\n${userAdditionalContext || "None"}\n\nCANDIDATES:\n${JSON.stringify(validCandidates)}`,
+            temperature: 0,
+            maxTokens: 180,
+            responseFormat: "json",
+          });
+          const selection = review.parsedJson;
+          editorModelUsed = review.modelUsed;
+          editorScore = typeof selection?.score === "number" ? Math.max(0, Math.min(10, selection.score)) : 0;
+          editorReason = typeof selection?.reason === "string" ? selection.reason : "Editor did not explain its selection.";
+          if (Number.isInteger(selection?.bestIndex) && selection.bestIndex >= 0 && selection.bestIndex < validCandidates.length) {
+            chosen = validCandidates[selection.bestIndex];
+          } else {
+            editorScore = Math.min(editorScore, 7);
+          }
+          if (review.modelUsed !== "openai/gpt-5.4-mini" && review.modelUsed !== "anthropic/claude-sonnet-4.6") {
+            editorScore = 0;
+            editorReason = `Quality editor unavailable; fallback used ${review.modelUsed}. Check OpenRouter credits, retry, or choose a faster model.`;
+          } else if (review.modelUsed === response.modelUsed) {
+            editorScore = 0;
+            editorReason = "An independent quality editor was unavailable. Check OpenRouter credits, retry, or choose a faster model.";
+          }
+        } catch {
+          editorScore = 0;
+          editorReason = "Quality editor unavailable. Check OpenRouter credits, retry, or choose a faster model.";
+        }
+      }
+      const parsedResult: CommentGenerationResult = {
+        comment: chosen,
+        wordCount: chosen.split(/\s+/).filter(Boolean).length,
+        sentenceCount: chosen.split(/[.!?]+/).filter((s) => s.trim().length > 0).length,
+        editorScore,
+        editorReason,
+        editorModelUsed,
+      };
+      return {
+        result: parsedResult,
+        debug: {
           stepIndex: 3,
           stepName: "Candidate Comment Generation",
           agentName: "Comment Candidate Generator Agent",
           systemPrompt,
           userPrompt: attempts === 1 ? userPrompt : `${userPrompt}\n\n[RETRY ${attempts}]`,
           rawResponseText: response.text,
-          parsedOutput: parsedResult,
+          parsedOutput: { ...parsedResult, candidates: validCandidates },
           executionTimeMs: Date.now() - startTime,
           providerUsed: response.providerUsed,
           modelUsed: response.modelUsed,
-        };
-
-        return { result: parsedResult, debug };
-      }
-      issues.push(...validation.issues);
+        },
+      };
     }
 
     lastResponse = [...new Set(issues)].join("; ");
