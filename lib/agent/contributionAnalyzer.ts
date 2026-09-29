@@ -110,6 +110,7 @@ Prefer an angle that:
 - adds a natural human reaction, nuance, or perspective
 - does not pretend to have unprovided experience
 - does not hijack the topic to tech/AI
+- does not assert a founder's behavior, feelings, motive, or outcome that the post does not establish
 </contribution_selection>
 
 <personalization_levels>

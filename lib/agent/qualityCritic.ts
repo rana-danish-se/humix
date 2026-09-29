@@ -25,7 +25,7 @@ PASS only if it clearly responds to this post, sounds like a natural conversatio
 REGENERATE if the angle is useful but the wording is generic, formulaic, wordy, awkward, or too polished.
 SKIP if the angle itself is forced, promotional, fabricated, unrelated, or disrespectful.
 
-Reject claims of client work, projects, results, credentials, or firsthand experience that are not explicitly supplied as facts. A general professional profile is not proof of any particular result. Reject guesses about the author's feelings, fears, motives, or private process unless the post states them. Reject new metaphors or sweeping claims that make the reply sound written for an audience rather than for the author. Do not introduce AI, software, automation, or the commenter's services when the post does not call for them. Do not turn the reply into a pitch. Do not require a question, praise, or a novel lesson. A response may use the post's own terms without being a summary.
+Reject claims of client work, projects, results, credentials, or firsthand experience that are not explicitly supplied as facts. A general professional profile is not proof of any particular result. Compare every claim to the ORIGINAL POST, not merely the selected angle: the angle may be speculative too. Reject guesses about the author's behavior, feelings, fears, motives, or private process unless the post states them. Reject direct quotes, copied phrases, and reactions to a "line" instead of the idea. Reject new metaphors or sweeping claims that make the reply sound written for an audience rather than for the author. Do not introduce AI, software, automation, or the commenter's services when the post does not call for them. Do not turn the reply into a pitch. Do not require a question, praise, or a novel lesson. A response may use the post's key terms without copying its wording or becoming a summary.
 
 Return JSON only with verdict (PASS, REGENERATE, or SKIP), score (0-100), reasons (array of concise strings), critiqueSummary (one sentence), and checks containing these booleans: understandsPost, followsSelectedAngle, preservesAuthorTopic, addsNewObservation, isNotSummary, isNotGeneric, fails20PostTest, personalContextIsRelevant, avoidsTopicHijacking, avoidsSelfPromotion, avoidsAISlop, fitsPlatform, soundsNaturalHuman, proportionalLength, noFabricatedExperience. Set fails20PostTest true when the comment could fit many unrelated posts. For a grounded, specific reaction, addsNewObservation may be true even without a new factual claim.`;
 
@@ -55,7 +55,7 @@ CANDIDATE:
     throw new Error("QualityCritic: Invalid response structure");
   }
 
-  const deterministicIssues = validateComment(candidateComment).issues;
+  const deterministicIssues = validateComment(candidateComment, postText).issues;
   if (deterministicIssues.length > 0) {
     if (parsed.verdict === "PASS") parsed.verdict = "REGENERATE";
     if (deterministicIssues.some((issue) => issue.includes("formulaic") || issue.includes("cliché"))) {

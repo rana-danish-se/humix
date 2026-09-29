@@ -11,12 +11,12 @@ const BANNED_CLICHES = [
   "this is a powerful reminder that", "the biggest lesson here is", "the key takeaway is",
   "that's where the magic happens", "thats where the magic happens", "that's the difference between",
   "thats the difference between", "it's wild how often", "its wild how often",
+  "that line hits different", "this line hits different", "when you realize",
 ];
 
 const FORMULAIC_PATTERNS = [
   /\bit'?s not(?: just)? .+?,\s*it'?s\b/i,
   /.+ isn'?t about .+, it'?s about .+/i,
-  /the real .+ is/i,
   /at the end of the day/i,
   /this is a powerful reminder that/i,
   /the biggest lesson here is/i,
@@ -26,9 +26,14 @@ const FORMULAIC_PATTERNS = [
   /one thing that stands out to me/i,
   /this speaks to/i,
   /there'?s something really interesting about/i,
+  /\b(?:isn'?t|is not) [^,.]+,\s*it'?s\b/i,
 ];
 
-export function validateComment(comment: string): { valid: boolean; issues: string[] } {
+function wordsIn(text: string): string[] {
+  return (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
+}
+
+export function validateComment(comment: string, postText: string = ""): { valid: boolean; issues: string[] } {
   const issues: string[] = [];
   const normalized = comment.replace(/[’‘]/g, "'").replace(/[—–]/g, ", ");
   const lower = normalized.toLowerCase();
@@ -62,6 +67,33 @@ export function validateComment(comment: string): { valid: boolean; issues: stri
   }
   if (/\b(?:ivoro|DM me|book a call|check out (?:my|our)|my (?:service|agency)|our (?:service|agency))\b/i.test(comment)) {
     issues.push("Contains unsolicited self-promotion");
+  }
+  if (/\b(?:everyone|everybody|every (?:deal|founder)|most (?:founders|people))\b/i.test(normalized)) {
+    issues.push("Makes a broad claim that the post does not establish");
+  }
+  const unstatedEmotion = normalized.match(/\b(?:emotional(?:ly)?|fear|afraid|ego|insecure|anxious|motivation|intentions?)\b/i)?.[0];
+  if (unstatedEmotion && !new RegExp(`\\b${unstatedEmotion}\\b`, "i").test(postText)) {
+    issues.push(`Attributes an unstated feeling or motive: ${unstatedEmotion}`);
+  }
+  if (postText) {
+    const postWords = wordsIn(postText);
+    const commentWords = wordsIn(comment);
+    const postPhrases = new Set<string>();
+    for (let index = 0; index <= postWords.length - 5; index++) {
+      postPhrases.add(postWords.slice(index, index + 5).join(" "));
+    }
+    if (commentWords.some((_, index) => index <= commentWords.length - 5 &&
+        postPhrases.has(commentWords.slice(index, index + 5).join(" ")))) {
+      issues.push("Copies a five-word phrase from the post");
+    }
+    const postNormalized = ` ${postWords.join(" ")} `;
+    for (const match of comment.matchAll(/[“"]([^”"]+)[”"]|‘([^’]+)’|(?<![\p{L}\p{N}])'([^']+)'(?![\p{L}\p{N}])/gu)) {
+      const quotedWords = wordsIn(match[1] || match[2] || match[3]);
+      if (quotedWords.length >= 2 && postNormalized.includes(` ${quotedWords.join(" ")} `)) {
+        issues.push("Quotes wording from the post");
+        break;
+      }
+    }
   }
 
   return { valid: issues.length === 0, issues };
@@ -130,6 +162,7 @@ Do not create artificial sentence complexity.
 <specificity>
 Anchor the comment to ONE specific idea, detail, example, tension, or implication from the post.
 The comment should feel written for this exact post.
+Do not quote a line from the post, reuse its phrasing, or open with "That line hits different" or "When you realize". Refer to the idea in your own plain words.
 
 MENTAL TEST:
 "If I pasted this exact comment under 10 unrelated posts, would it still work?"
@@ -351,7 +384,7 @@ ${postText}
     for (const candidate of candidates) {
       const rawComment = candidate.trim();
       if (!rawComment) continue;
-      const validation = validateComment(rawComment);
+      const validation = validateComment(rawComment, postText);
       lastCandidate = rawComment;
 
       if (validation.valid) {
