@@ -31,7 +31,7 @@ export async function callModel(
   provider: LLMProvider = "gemini",
   model: string = "gemini-flash-lite-latest",
   request: LLMRequest,
-  retries: number = 2
+  retries: number = 1
 ): Promise<LLMResponse> {
   try {
     return await callProvider(provider, model, request, Math.max(1, retries));
@@ -39,7 +39,7 @@ export async function callModel(
     const fallback: LLMProvider = provider === "gemini" ? "openrouter" : "gemini";
     const fallbackKey = fallback === "gemini" ? process.env.GEMINI_API_KEY : process.env.OPENROUTER_API_KEY;
     if (!fallbackKey) throw primaryError;
-    const fallbackModel = fallback === "gemini" ? "gemini-flash-lite-latest" : "deepseek/deepseek-chat";
+    const fallbackModel = fallback === "gemini" ? "gemini-flash-lite-latest" : "qwen/qwen3-30b-a3b-instruct-2507";
     try {
       return await callProvider(fallback, fallbackModel, request, 1);
     } catch (fallbackError) {

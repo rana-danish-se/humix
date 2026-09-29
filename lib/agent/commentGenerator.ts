@@ -10,11 +10,11 @@ const BANNED_CLICHES = [
   "it's not x, it's y", "its not x, its y", "the real x is", "at the end of the day",
   "this is a powerful reminder that", "the biggest lesson here is", "the key takeaway is",
   "that's where the magic happens", "thats where the magic happens", "that's the difference between",
-  "thats the difference between",
+  "thats the difference between", "it's wild how often", "its wild how often",
 ];
 
 const FORMULAIC_PATTERNS = [
-  /it'?s not .+, it'?s .+/i,
+  /\bit'?s not(?: just)? .+?,\s*it'?s\b/i,
   /.+ isn'?t about .+, it'?s about .+/i,
   /the real .+ is/i,
   /at the end of the day/i,
@@ -28,9 +28,10 @@ const FORMULAIC_PATTERNS = [
   /there'?s something really interesting about/i,
 ];
 
-function validateComment(comment: string): { valid: boolean; issues: string[] } {
+export function validateComment(comment: string): { valid: boolean; issues: string[] } {
   const issues: string[] = [];
-  const lower = comment.toLowerCase();
+  const normalized = comment.replace(/[’‘]/g, "'").replace(/[—–]/g, ", ");
+  const lower = normalized.toLowerCase();
 
   // Check banned clichés
   for (const cliche of BANNED_CLICHES) {
@@ -41,7 +42,7 @@ function validateComment(comment: string): { valid: boolean; issues: string[] } 
 
   // Check formulaic patterns
   for (const pattern of FORMULAIC_PATTERNS) {
-    if (pattern.test(comment)) {
+    if (pattern.test(normalized)) {
       issues.push(`Contains formulaic pattern: ${pattern.source}`);
     }
   }
@@ -80,8 +81,8 @@ export async function generateCommentCandidate(
 <role>You are an expert Social Comment Writer for a thoughtful human professional.</role>
 
 <task>
-Write the exact comment the user can paste under the given social media post.
-The comment must sound like something a real person would naturally type after reading the post — not like a content strategist, copywriter, motivational speaker, or AI trying to demonstrate intelligence.
+Suggest three distinctly worded comments for this post. The system will select one safe draft for the user to review.
+Each should sound like something a real person would naturally type after reading the post — not like a content strategist, copywriter, motivational speaker, or AI trying to demonstrate intelligence.
 </task>
 
 <core_objective>
@@ -188,12 +189,14 @@ If personalization would require inventing something, do not personalize.
 Never write "I've seen this myself" unless that experience is explicitly available in the provided user context.
 Do not mention Ivoro, its services, clients, projects, or results in this comment.
 The user's professional background can help select a relevant idea, but is not a reason to claim expertise in the comment.
+Do not guess what the author feels, fears, or intends. Only refer to an emotion or motive when the post states it.
 </authenticity>
 
 <tone>
 Use direct, conversational, grounded language.
 Prefer the way a thoughtful professional would actually speak in a conversation.
 Avoid polished essay language, motivational-speaker language, corporate language, and exaggerated intellectual phrasing.
+Do not add a metaphor or analogy that the author did not use. Avoid sweeping claims about what founders or businesses often do.
 
 Natural does NOT mean grammatically sloppy.
 Do not intentionally add mistakes, awkwardness, or filler to simulate humanity.
@@ -293,10 +296,10 @@ If any answer is unfavorable, rewrite before returning.
 </final_quality_check>
 
 <output_format>
-Return JSON with EXACTLY this structure:
+Return JSON with EXACTLY this structure. Make the three options genuinely different, including at least one plain, understated reaction. Do not reuse a contrast formula such as "It's not X, it's Y" or "The real X is Y":
 
 {
-  "comment": "The exact comment text."
+  "comments": ["First option", "Second option", "Third option"]
 }
 </output_format>
 </system_prompt>`;
@@ -316,8 +319,12 @@ ${postText}
 """`;
 
   let lastResponse = "";
+  let lastCandidate = "";
+  let lastRawResponseText = "";
+  let lastProviderUsed: LLMProvider | undefined;
+  let lastModelUsed: string | undefined;
   let attempts = 0;
-  const maxAttempts = 3;
+  const maxAttempts = 2;
 
   while (attempts < maxAttempts) {
     attempts++;
@@ -328,43 +335,80 @@ ${postText}
       temperature: 0.15,
       responseFormat: "json",
     });
+    lastRawResponseText = response.text;
+    lastProviderUsed = response.providerUsed;
+    lastModelUsed = response.modelUsed;
 
-    if (typeof response.parsedJson?.comment !== "string") {
+    const candidates: string[] = Array.isArray(response.parsedJson?.comments)
+      ? response.parsedJson.comments.filter((candidate: unknown): candidate is string => typeof candidate === "string")
+      : typeof response.parsedJson?.comment === "string" ? [response.parsedJson.comment] : [];
+    if (candidates.length === 0) {
       lastResponse = `Failed to parse JSON: ${response.text.slice(0, 300)}`;
       continue;
     }
 
-    const rawComment = response.parsedJson.comment.trim();
-    const validation = validateComment(rawComment);
+    const issues: string[] = [];
+    for (const candidate of candidates) {
+      const rawComment = candidate.trim();
+      if (!rawComment) continue;
+      const validation = validateComment(rawComment);
+      lastCandidate = rawComment;
 
-    if (validation.valid) {
-      const words = rawComment.split(/\s+/).filter(Boolean).length;
-      const sentences = rawComment.split(/[.!?]+/).filter((s: string) => s.trim().length > 0).length;
+      if (validation.valid) {
+        const words = rawComment.split(/\s+/).filter(Boolean).length;
+        const sentences = rawComment.split(/[.!?]+/).filter((s: string) => s.trim().length > 0).length;
 
-      const parsedResult: CommentGenerationResult = {
-        comment: rawComment,
-        wordCount: words,
-        sentenceCount: sentences,
-      };
+        const parsedResult: CommentGenerationResult = {
+          comment: rawComment,
+          wordCount: words,
+          sentenceCount: sentences,
+        };
 
-      const debug: LLMStepDebug = {
-        stepIndex: 3,
-        stepName: "Candidate Comment Generation",
-        agentName: "Comment Candidate Generator Agent",
-        systemPrompt,
-        userPrompt: attempts === 1 ? userPrompt : `${userPrompt}\n\n[RETRY ${attempts}]`,
-        rawResponseText: response.text,
-        parsedOutput: parsedResult,
-        executionTimeMs: Date.now() - startTime,
-        providerUsed: response.providerUsed,
-        modelUsed: response.modelUsed,
-      };
+        const debug: LLMStepDebug = {
+          stepIndex: 3,
+          stepName: "Candidate Comment Generation",
+          agentName: "Comment Candidate Generator Agent",
+          systemPrompt,
+          userPrompt: attempts === 1 ? userPrompt : `${userPrompt}\n\n[RETRY ${attempts}]`,
+          rawResponseText: response.text,
+          parsedOutput: parsedResult,
+          executionTimeMs: Date.now() - startTime,
+          providerUsed: response.providerUsed,
+          modelUsed: response.modelUsed,
+        };
 
-      return { result: parsedResult, debug };
+        return { result: parsedResult, debug };
+      }
+      issues.push(...validation.issues);
     }
 
-    lastResponse = validation.issues.join("; ");
+    lastResponse = [...new Set(issues)].join("; ");
   }
 
-  throw new Error(`CommentGenerator: Failed to generate valid comment after ${maxAttempts} attempts. Last issues: ${lastResponse}`);
+  if (!lastCandidate) {
+    throw new Error(`CommentGenerator: Failed to generate a comment after ${maxAttempts} attempts. Last issues: ${lastResponse}`);
+  }
+
+  // Let the critic make the final decision instead of turning a style failure
+  // into a server error. The critic runs the same deterministic checks.
+  const fallbackResult: CommentGenerationResult = {
+    comment: lastCandidate,
+    wordCount: lastCandidate.split(/\s+/).filter(Boolean).length,
+    sentenceCount: lastCandidate.split(/[.!?]+/).filter((s) => s.trim()).length,
+  };
+  return {
+    result: fallbackResult,
+    debug: {
+      stepIndex: 3,
+      stepName: "Candidate Comment Generation",
+      agentName: "Comment Candidate Generator Agent",
+      systemPrompt,
+      userPrompt,
+      rawResponseText: lastRawResponseText,
+      parsedOutput: { ...fallbackResult, validationIssues: lastResponse },
+      executionTimeMs: Date.now() - startTime,
+      providerUsed: lastProviderUsed,
+      modelUsed: lastModelUsed,
+    },
+  };
 }

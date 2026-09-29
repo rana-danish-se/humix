@@ -4,12 +4,12 @@ import { generateCommentCandidate } from "./commentGenerator";
 import { evaluateCommentQuality } from "./qualityCritic";
 import { LLMProvider, LLMStepDebug, PipelineResult, PlatformType, PostAnalysisResult } from "@/lib/llm";
 
-function getCriticProvider(provider: LLMProvider): LLMProvider {
-  return provider === "gemini" ? "openrouter" : "gemini";
+function getCriticProvider(): LLMProvider {
+  return "openrouter";
 }
 
-function getCriticModel(provider: LLMProvider): string {
-  return provider === "gemini" ? "deepseek/deepseek-chat" : "gemini-flash-lite-latest";
+function getCriticModel(): string {
+  return "qwen/qwen3-30b-a3b-instruct-2507";
 }
 
 function validatePostAnalysis(analysis: PostAnalysisResult, postText: string): { valid: boolean; issues: string[] } {
@@ -89,8 +89,8 @@ export async function runCommentIntelligencePipeline(
   const startTime = Date.now();
   const stepDebugLogs: LLMStepDebug[] = [];
 
-  const criticProv = criticProvider || getCriticProvider(provider);
-  const criticMod = criticModel || getCriticModel(provider);
+  const criticProv = criticProvider || getCriticProvider();
+  const criticMod = criticModel || getCriticModel();
 
   // 1. Analyze Post (with validation retry)
   let postAnalysisData = await analyzePost(postText, platform, provider, model);
@@ -186,7 +186,7 @@ export async function runCommentIntelligencePipeline(
   let generation = generationData.result;
   stepDebugLogs.push(generationData.debug);
 
-  // 4. Quality Critic & Anti-Slop Audit (uses DIFFERENT provider/model)
+  // 4. Quality Critic & Anti-Slop Audit
   let criticData = await evaluateCommentQuality(
     postText,
     platform,

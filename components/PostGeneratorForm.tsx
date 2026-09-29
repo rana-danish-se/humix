@@ -4,12 +4,18 @@ import { useState, FormEvent } from "react";
 import { LLMStepDebug, PipelineResult, PlatformType } from "@/lib/llm";
 import { EVAL_TEST_CASES, TestCase } from "@/lib/eval/testCases";
 
+interface BenchmarkResult {
+  pipelineResult?: PipelineResult;
+  passed?: boolean;
+  failureReasons?: string[];
+}
+
 export default function PostGeneratorForm() {
   const [postText, setPostText] = useState<string>("");
   const [platform, setPlatform] = useState<PlatformType>("LinkedIn");
   const [context, setContext] = useState<string>("");
-  const [provider, setProvider] = useState<"gemini" | "openrouter">("gemini");
-  const [model, setModel] = useState<string>("gemini-flash-lite-latest");
+  const [provider, setProvider] = useState<"gemini" | "openrouter">("openrouter");
+  const [model, setModel] = useState<string>("qwen/qwen3-30b-a3b-instruct-2507");
 
   const [loading, setLoading] = useState<boolean>(false);
   const [result, setResult] = useState<PipelineResult | null>(null);
@@ -19,7 +25,7 @@ export default function PostGeneratorForm() {
   const [expandedStep, setExpandedStep] = useState<number | null>(1);
 
   const [runningBenchmarkId, setRunningBenchmarkId] = useState<string | null>(null);
-  const [benchmarkResults, setBenchmarkResults] = useState<Record<string, any>>({});
+  const [benchmarkResults, setBenchmarkResults] = useState<Record<string, BenchmarkResult>>({});
 
   const handlePlatformChange = (p: PlatformType) => {
     setPlatform(p);
@@ -135,7 +141,7 @@ export default function PostGeneratorForm() {
             onChange={(e) => {
               const p = e.target.value as "gemini" | "openrouter";
               setProvider(p);
-              setModel(p === "gemini" ? "gemini-flash-lite-latest" : "deepseek/deepseek-chat");
+              setModel(p === "gemini" ? "gemini-flash-lite-latest" : "qwen/qwen3-30b-a3b-instruct-2507");
             }}
             className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-medium cursor-pointer"
           >
@@ -156,7 +162,8 @@ export default function PostGeneratorForm() {
               </>
             ) : (
               <>
-                <option value="deepseek/deepseek-chat">⚡ DeepSeek V3 (Ultra-Fast)</option>
+                <option value="qwen/qwen3-30b-a3b-instruct-2507">⚡ Qwen3 30B (Fast)</option>
+                <option value="deepseek/deepseek-chat">DeepSeek Chat</option>
                 <option value="meta-llama/llama-3.3-70b-instruct">🦙 Llama 3.3 70B (Instruct)</option>
               </>
             )}
@@ -324,7 +331,7 @@ export default function PostGeneratorForm() {
                     </button>
                   </div>
                   <div className="p-4 rounded-xl border border-indigo-200/80 bg-indigo-50/30 text-slate-900 text-base font-medium leading-relaxed shadow-inner">
-                    "{result.comment}"
+                    &quot;{result.comment}&quot;
                   </div>
                 </div>
               ) : result.status === "SKIP" ? (
@@ -531,7 +538,7 @@ export default function PostGeneratorForm() {
                   </div>
 
                   <p className="text-xs text-slate-600 italic bg-white p-2.5 rounded-lg border border-slate-200/80">
-                    "{tc.postText}"
+                    &quot;{tc.postText}&quot;
                   </p>
 
                   {res && (
@@ -542,12 +549,12 @@ export default function PostGeneratorForm() {
                       </div>
                       {res.pipelineResult?.comment && (
                         <div className="text-indigo-900 font-medium">
-                          Comment: "{res.pipelineResult.comment}"
+                          Comment: &quot;{res.pipelineResult.comment}&quot;
                         </div>
                       )}
-                      {res.failureReasons?.length > 0 && (
+                      {(res.failureReasons?.length ?? 0) > 0 && (
                         <div className="text-rose-600 font-normal">
-                          Failures: {res.failureReasons.join(", ")}
+                          Failures: {res.failureReasons?.join(", ")}
                         </div>
                       )}
                     </div>

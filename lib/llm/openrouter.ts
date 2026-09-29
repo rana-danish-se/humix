@@ -2,17 +2,23 @@ import { LLMHttpError, LLMRequest, LLMResponse } from "./types";
 
 export async function callOpenRouter(
   request: LLMRequest,
-  model: string = "deepseek/deepseek-chat"
+  model: string = "qwen/qwen3-30b-a3b-instruct-2507"
 ): Promise<LLMResponse> {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("OPENROUTER_API_KEY environment variable is not set");
   }
 
-  const modelSlug = model && model.trim() ? model.trim() : "deepseek/deepseek-chat";
+  const modelSlug = model && model.trim() ? model.trim() : "qwen/qwen3-30b-a3b-instruct-2507";
+  const fallbackModels = [
+    "meta-llama/llama-3.3-70b-instruct",
+    "qwen/qwen3-30b-a3b-instruct-2507",
+    "deepseek/deepseek-chat",
+  ].filter((candidate) => candidate !== modelSlug);
 
   const payload: any = {
     model: modelSlug,
+    models: fallbackModels,
     messages: [
       {
         role: "system",
@@ -39,7 +45,7 @@ export async function callOpenRouter(
       "X-Title": "Humix Comment Intelligence",
     },
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(12000),
+    signal: AbortSignal.timeout(20000),
   });
 
   if (!response.ok) {
@@ -66,6 +72,6 @@ export async function callOpenRouter(
     text: rawText,
     parsedJson,
     providerUsed: "openrouter",
-    modelUsed: modelSlug,
+    modelUsed: typeof data.model === "string" ? data.model : modelSlug,
   };
 }
