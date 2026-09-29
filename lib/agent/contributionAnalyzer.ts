@@ -108,6 +108,7 @@ Valid contribution types:
 Prefer an angle that:
 - anchors to something specific in the post
 - adds a natural human reaction, nuance, or perspective
+- can be said without first restating the author's point; if the only angle is "the author's point is true", recommend SKIP
 - does not pretend to have unprovided experience
 - does not hijack the topic to tech/AI
 - does not assert a founder's behavior, feelings, motive, or outcome that the post does not establish

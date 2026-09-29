@@ -12,6 +12,11 @@ const BANNED_CLICHES = [
   "that's where the magic happens", "thats where the magic happens", "that's the difference between",
   "thats the difference between", "it's wild how often", "its wild how often",
   "that line hits different", "this line hits different", "when you realize",
+  "that line hits hard", "this line hits hard", "it's wild how", "its wild how",
+  "it's strange how", "its strange how", "until it's too late", "until its too late",
+  "hanging by a thread",
+  "quietly terrifying",
+  "sense of self", "quietly rewrite", "quietly rewrites",
 ];
 
 const FORMULAIC_PATTERNS = [
@@ -27,11 +32,24 @@ const FORMULAIC_PATTERNS = [
   /this speaks to/i,
   /there'?s something really interesting about/i,
   /\b(?:isn'?t|is not) [^,.]+,\s*it'?s\b/i,
+  /^(?:that|this|the) (?:line|part|point|bit) (?:about .+? )?(?:hits?|really hits?)\b/i,
+  /^the part about\b/i,
+  /\breally hits\b/i,
+  /^the idea that\b/i,
+  /^(?:that|this|the) line\b/i,
 ];
 
 function wordsIn(text: string): string[] {
   return (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
 }
+
+const GENERIC_ANCHOR_WORDS = new Set([
+  "about", "after", "again", "being", "could", "every", "going", "other", "people",
+  "really", "should", "since", "something", "still", "their", "there", "these",
+  "thing", "things", "those", "would", "where", "which", "while", "because",
+  "business", "company", "working", "story", "today", "years",
+  "doing", "growing", "feeling", "making", "become", "becomes", "feels",
+]);
 
 export function validateComment(comment: string, postText: string = ""): { valid: boolean; issues: string[] } {
   const issues: string[] = [];
@@ -78,6 +96,12 @@ export function validateComment(comment: string, postText: string = ""): { valid
   if (postText) {
     const postWords = wordsIn(postText);
     const commentWords = wordsIn(comment);
+    if (postWords.length >= 20) {
+      const anchors = new Set(postWords.filter((word) => word.length >= 5 && !GENERIC_ANCHOR_WORDS.has(word)));
+      if (anchors.size > 0 && !commentWords.some((word) => anchors.has(word))) {
+        issues.push("Does not refer to a specific detail from the original post");
+      }
+    }
     const postPhrases = new Set<string>();
     for (let index = 0; index <= postWords.length - 5; index++) {
       postPhrases.add(postWords.slice(index, index + 5).join(" "));
@@ -142,13 +166,14 @@ Use the Step 2 output as the conversational direction:
 - If personalizationLevel = 0, do not inject the user's professional background.
 - If topicHijackRisk = true, do not use the user's professional background to create the comment.
 
+If the angleExplanation adds a motive, feeling, or outcome absent from the original post, drop that part and respond to a concrete detail in the post instead.
 Do not invent a completely different contribution angle.
 Do not simply rewrite angleExplanation into a more polished form.
 Turn the underlying idea into something a person would naturally say.
 </step2_constraint>
 
 <length_constraint>
-Aim for one natural thought, usually 10–35 words. Never exceed 40 words or two short sentences.
+Aim for one natural thought, usually 10–25 words. Never exceed 40 words or two short sentences.
 
 The comment must be concise and punchy:
 - Either 1 complete, focused sentence.
@@ -162,7 +187,9 @@ Do not create artificial sentence complexity.
 <specificity>
 Anchor the comment to ONE specific idea, detail, example, tension, or implication from the post.
 The comment should feel written for this exact post.
+Include one concrete noun or specific detail from the original post in your own sentence. Broad words such as "business", "people", "work", and "doing" do not count.
 Do not quote a line from the post, reuse its phrasing, or open with "That line hits different" or "When you realize". Refer to the idea in your own plain words.
+Do not open by pointing at the author's wording ("That line hits hard", "The part about...", "The idea that..."). Address the person and idea directly.
 
 MENTAL TEST:
 "If I pasted this exact comment under 10 unrelated posts, would it still work?"
@@ -174,6 +201,7 @@ CRITICAL ANTI-SUMMARY & ANTI-ECHO DIRECTIVES:
 
 1. DO NOT SUBSTITUTE A SUMMARY FOR A RESPONSE:
 - A comment should respond to a specific point rather than condense the whole post.
+- Naming a detail, then restating its implication with fresh synonyms, is still a summary.
 - Never write "You said X, and that's true because Y" or "Doing X is so important for Y" when X is the post's main point.
 - The author already wrote the post; they do NOT need a condensed or rephrased version of their own thoughts in their comment section.
 
@@ -183,10 +211,12 @@ CRITICAL ANTI-SUMMARY & ANTI-ECHO DIRECTIVES:
 
 3. CONVERSATION TEST:
 - A brief, specific reaction can be enough. Do not manufacture a new lesson to sound insightful.
+- A plain reaction to a concrete fact, such as the duration or effort the author describes, is valid even without a new insight. Do not turn it into a theory about what the fact secretly means.
 - If the comment merely rewrites the premise, add a genuine reaction or choose to skip.
 
 4. NO REFRESHED SYNONYMS:
 - Do not attempt to bypass this rule by replacing the author's key terms with synonyms while keeping the underlying restatement intact.
+- Do not add a dramatic second sentence merely to make a summary sound original.
 </strict_anti_summary_rules>
 
 <what_counts_as_contribution>
@@ -230,6 +260,8 @@ Use direct, conversational, grounded language.
 Prefer the way a thoughtful professional would actually speak in a conversation.
 Avoid polished essay language, motivational-speaker language, corporate language, and exaggerated intellectual phrasing.
 Do not add a metaphor or analogy that the author did not use. Avoid sweeping claims about what founders or businesses often do.
+Avoid dramatic endings about drowning, carrying weight, hidden costs, or what "really" matters. Say the thought plainly.
+Do not turn a concrete detail into an unsupported claim about identity, psychological change, or what the author learned.
 
 Natural does NOT mean grammatically sloppy.
 Do not intentionally add mistakes, awkwardness, or filler to simulate humanity.
@@ -329,7 +361,7 @@ If any answer is unfavorable, rewrite before returning.
 </final_quality_check>
 
 <output_format>
-Return JSON with EXACTLY this structure. Make the three options genuinely different, including at least one plain, understated reaction. Do not reuse a contrast formula such as "It's not X, it's Y" or "The real X is Y":
+Return JSON with EXACTLY this structure. Make all three options plain and understated, and put the shortest natural option first. Each option must add a distinct response instead of restating the post. Do not reuse a contrast formula such as "It's not X, it's Y" or "The real X is Y":
 
 {
   "comments": ["First option", "Second option", "Third option"]
