@@ -4,7 +4,7 @@ export async function analyzePost(
   postText: string,
   platform: string,
   provider: LLMProvider = "gemini",
-  model: string = "gemini-flash-lite-latest"
+  model: string = "gemini-3.8-flash"
 ): Promise<{ result: PostAnalysisResult; debug: LLMStepDebug }> {
   const startTime = Date.now();
 
@@ -108,6 +108,7 @@ ${postText}
     systemPrompt,
     userPrompt,
     temperature: 0.1,
+    maxTokens: 1200,
     responseFormat: "json",
   });
 

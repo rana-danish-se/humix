@@ -8,20 +8,25 @@ function isRetryableError(error: unknown): boolean {
     (/timeout|abort|ETIMEDOUT|ECONNRESET|fetch failed/i.test(error.message) || error.name === "TimeoutError");
 }
 
+// A 402 is a billing wall — no point retrying it at all.
+function isTerminalError(error: unknown): boolean {
+  return error instanceof LLMHttpError && error.status === 402;
+}
+
 async function callProvider(provider: LLMProvider, model: string, request: LLMRequest, attempts: number): Promise<LLMResponse> {
   let lastError: unknown;
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       const response = provider === "gemini" ? await callGemini(request, model) : await callOpenRouter(request, model);
       if (request.responseFormat === "json" &&
-          (!response.parsedJson || typeof response.parsedJson !== "object" || Array.isArray(response.parsedJson))) {
+          (response.parsedJson === undefined || response.parsedJson === null || typeof response.parsedJson !== "object")) {
         throw new Error("Invalid JSON model response");
       }
       return response;
     } catch (error) {
       lastError = error;
-      if (!isRetryableError(error) || attempt === attempts - 1) break;
-      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+      if (isTerminalError(error) || !isRetryableError(error) || attempt === attempts - 1) break;
+      await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
     }
   }
   throw lastError;
@@ -29,9 +34,9 @@ async function callProvider(provider: LLMProvider, model: string, request: LLMRe
 
 export async function callModel(
   provider: LLMProvider = "gemini",
-  model: string = "gemini-flash-lite-latest",
+  model: string = "gemini-3.8-flash",
   request: LLMRequest,
-  retries: number = 1
+  retries: number = 2
 ): Promise<LLMResponse> {
   try {
     return await callProvider(provider, model, request, Math.max(1, retries));
@@ -39,9 +44,9 @@ export async function callModel(
     const fallback: LLMProvider = provider === "gemini" ? "openrouter" : "gemini";
     const fallbackKey = fallback === "gemini" ? process.env.GEMINI_API_KEY : process.env.OPENROUTER_API_KEY;
     if (!fallbackKey) throw primaryError;
-    const fallbackModel = fallback === "gemini" ? "gemini-flash-lite-latest" : "qwen/qwen3-30b-a3b-instruct-2507";
+    const fallbackModel = fallback === "gemini" ? "gemini-3.8-flash" : "qwen/qwen3.8-27b:free";
     try {
-      return await callProvider(fallback, fallbackModel, request, 1);
+      return await callProvider(fallback, fallbackModel, request, 2);
     } catch (fallbackError) {
       throw new AggregateError([primaryError, fallbackError], "Both model providers failed");
     }

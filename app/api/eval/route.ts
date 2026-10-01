@@ -9,19 +9,22 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { testCaseId } = body;
+    const { testCaseId, provider, model } = body;
 
     const tc = EVAL_TEST_CASES.find((t) => t.id === testCaseId);
     if (!tc) {
       return NextResponse.json({ error: "Test case not found" }, { status: 404 });
     }
 
+    const selectedProvider = provider === "openrouter" ? "openrouter" : "gemini";
+    const selectedModel = model || (selectedProvider === "gemini" ? "gemini-3.8-flash" : "google/gemma-4-31b-it:free");
+
     const result = await runCommentIntelligencePipeline(
       tc.postText,
       tc.platform,
       undefined,
-      "gemini",
-      "gemini-flash-lite-latest"
+      selectedProvider,
+      selectedModel
     );
 
     let tcPassed = true;
@@ -51,9 +54,10 @@ export async function POST(request: Request) {
       passed: tcPassed,
       failureReasons,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Evaluation execution failed";
     return NextResponse.json(
-      { error: error?.message || "Evaluation execution failed" },
+      { error: message },
       { status: 500 }
     );
   }

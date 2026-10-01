@@ -7,7 +7,7 @@ export async function analyzeContribution(
   analysis: PostAnalysisResult,
   userAdditionalContext?: string,
   provider: LLMProvider = "gemini",
-  model: string = "gemini-flash-lite-latest"
+  model: string = "gemini-3.8-flash"
 ): Promise<{ result: ContributionResult; debug: LLMStepDebug }> {
   const startTime = Date.now();
   const techTerms = /\b(?:AI|automation|software|coding?|API|algorithms?|machine learning|SaaS|tech(?:nology)?)\b/i;
@@ -76,10 +76,10 @@ A legitimate contribution can:
 Do NOT swing too far and allow comments on everything.
 
 Recommend SKIP (shouldSkip = true) when:
-1. PURE LIFESTYLE / PERSONAL MOMENTS: Posts like "Spent the weekend hiking with my family ❤️" with no discussion surface. Do NOT manufacture generic AI sludge about "stepping away from the noise."
+1. PURE LIFESTYLE / PERSONAL MOMENTS: Posts like "Spent the weekend hiking with my family ❤️" or cooking dinner / birthdays with no business, professional, or intellectual discussion surface. MUST recommend SKIP (shouldSkip: true). Do NOT manufacture generic reactions or AI sludge.
 2. PURE PROMOTIONAL / ANNOUNCEMENTS: Posts like "Excited to announce my new coaching program!" with no underlying story, hook, or discussion idea. Do NOT manufacture profound observations.
 3. NO DISCUSSION SURFACE: The post contains no meaningful idea, question, tension, observation, or hook to engage with.
-4. ONLY SUMMARY / ECHO REMAINING: The only possible response is to paraphrase, summarize, or give generic praise ("Great post!"). A brief reaction to a specific detail is still a valid response.
+4. ONLY SUMMARY / ECHO REMAINING: The only possible response is to paraphrase, summarize, or give generic praise ("Great post!").
 5. REQUIRED FABRICATION: A comment would require inventing personal experience, clients, stats, or beliefs not in the user context.
 
 Do NOT skip posts that discuss real concepts, stories, or tensions (e.g. treating symptoms vs root causes, or realizing you were solving the wrong problem) simply because they are in wellness, coaching, or branding. The user can engage as a thoughtful human reader.
@@ -150,7 +150,7 @@ AUTHOR TONE: ${analysis.tone}
 POST CLAIMS: ${JSON.stringify(analysis.claims)}
 
 USER BACKGROUND SUMMARY:
-${isTechPost ? JSON.stringify(USER_PROFILE.background) : "Not supplied for this topic; comment as a reader without professional positioning."}
+${isTechPost ? JSON.stringify(USER_PROFILE.background) : "General business operator & founder perspective (do not force software or AI into non-tech posts)."}
 OPTIONAL USER CONTEXT PROVIDED FOR THIS POST:
 ${userAdditionalContext || "None"}
 
@@ -163,6 +163,7 @@ ${postText}
     systemPrompt,
     userPrompt,
     temperature: 0.2,
+    maxTokens: 600,
     responseFormat: "json",
   });
 

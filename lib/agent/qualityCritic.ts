@@ -14,21 +14,50 @@ export async function evaluateCommentQuality(
   candidateComment: string,
   analysis: PostAnalysisResult,
   contribution: ContributionResult,
-  provider: LLMProvider = "openrouter",
-  model: string = "qwen/qwen3-30b-a3b-instruct-2507",
+  provider: LLMProvider = "gemini",
+  model: string = "gemini-3.8-flash",
   userAdditionalContext?: string
 ): Promise<{ result: QualityCriticResult; debug: LLMStepDebug }> {
   const startTime = Date.now();
-  const systemPrompt = `You are reviewing a proposed social media comment for a real person to post under their own name.
-Judge the exact wording, not how clever it sounds. A brief reaction to one concrete fact in the post is enough; a new insight is not required. Mark isNotSummary true for that kind of reaction when it does not condense or rephrase the whole post.
+  const systemPrompt = `You are reviewing a proposed social media comment for a real person to post under their own name on ${platform}.
+Judge the exact wording, not how clever it sounds. A brief, natural reaction or practical observation is ideal; a new profound insight is NOT required. Mark isNotSummary true when it does not merely condense or paraphrase the author's post.
 
-PASS only if it clearly responds to a specific situation in this post, sounds like a natural conversation, and is safe to publish as written. A reply can extend the situation with a small joke or implication without reusing the post's words.
-REGENERATE if the angle is useful but the wording is generic, formulaic, wordy, awkward, or too polished.
-SKIP if the angle itself is forced, promotional, fabricated, unrelated, or disrespectful.
+PASS only if it clearly responds to this post, sounds like an authentic human being, and is safe to publish.
+REGENERATE if the angle is okay but the wording is generic, formulaic, too long, awkward, or sounds like ChatGPT.
+SKIP if the post cannot be commented on naturally without forced promotion or fabrication.
 
-Reject claims of client work, projects, results, credentials, or firsthand experience that are not explicitly supplied as facts. A general professional profile is not proof of any particular result. Compare every claim to the ORIGINAL POST, not merely the selected angle: the angle may be speculative too. Reject guesses about the author's behavior, feelings, fears, motives, or private process unless the post states them. A concrete detail does not license a new theory about identity, psychology, or a hidden lesson. Reject direct quotes, copied phrases, and openings that refer to a "line" instead of the idea. If the comment only renames the post's point with synonyms, mark isNotSummary false even when the wording is fresh. Reject performative openings like "That line hits hard", "It's wild how", and "The part about...". Reject dramatic endings, new metaphors, or sweeping claims that make the reply sound written for an audience rather than for the author. Do not introduce AI, software, automation, or the commenter's services when the post does not call for them. Do not turn the reply into a pitch. Do not require a question, praise, or a novel lesson. A response may use the post's key terms without copying its wording or becoming a summary.
+CRITICAL CHECKS:
+- Reject claims of client work, projects, results, or firsthand experience that are not in the context.
+- Reject ungrounded guesses about the author's private motives or psychology.
+- Reject performative AI openings ('That line hits hard', 'It's wild how', 'The part about', 'Quietly', 'At the end of the day').
+- Reject dramatic endings or neat X-versus-Y contrasts.
+- Do NOT turn the reply into a sales pitch.
+- Set fails20PostTest to TRUE ONLY if the comment is completely generic and could be pasted onto 20 completely unrelated posts without changing a word. If it refers to this post's situation, fails20PostTest must be FALSE.
 
-Return JSON only with verdict (PASS, REGENERATE, or SKIP), score (0-100), reasons (array of concise strings), critiqueSummary (one sentence), and checks containing these booleans: understandsPost, followsSelectedAngle, preservesAuthorTopic, addsNewObservation, isNotSummary, isNotGeneric, fails20PostTest, personalContextIsRelevant, avoidsTopicHijacking, avoidsSelfPromotion, avoidsAISlop, fitsPlatform, soundsNaturalHuman, proportionalLength, noFabricatedExperience. Set fails20PostTest true when the comment could fit many unrelated posts. For a grounded, specific reaction, addsNewObservation may be true even without a new factual claim.`;
+Return JSON:
+{
+  "verdict": "PASS" | "REGENERATE" | "SKIP",
+  "score": number (0-100),
+  "reasons": string[],
+  "critiqueSummary": "one sentence",
+  "checks": {
+    "understandsPost": boolean,
+    "followsSelectedAngle": boolean,
+    "preservesAuthorTopic": boolean,
+    "addsNewObservation": boolean,
+    "isNotSummary": boolean,
+    "isNotGeneric": boolean,
+    "fails20PostTest": boolean,
+    "personalContextIsRelevant": boolean,
+    "avoidsTopicHijacking": boolean,
+    "avoidsSelfPromotion": boolean,
+    "avoidsAISlop": boolean,
+    "fitsPlatform": boolean,
+    "soundsNaturalHuman": boolean,
+    "proportionalLength": boolean,
+    "noFabricatedExperience": boolean
+  }
+}`;
 
   const userPrompt = `PLATFORM: ${platform}
 POST:
@@ -36,8 +65,7 @@ POST:
 CORE IDEA: ${analysis.coreIdea}
 SELECTED ANGLE: ${contribution.angleExplanation || "None"}
 PERSONALIZATION LEVEL: ${contribution.personalizationLevel}
-TOPIC HIJACK RISK: ${contribution.topicHijackRisk}
-USER-PROVIDED CONTEXT: ${userAdditionalContext || "None"}
+USER CONTEXT: ${userAdditionalContext || "None"}
 CANDIDATE:
 """${candidateComment}"""`;
 
@@ -58,7 +86,7 @@ CANDIDATE:
     throw new Error("QualityCritic: Invalid response structure");
   }
 
-  const deterministicIssues = validateComment(candidateComment, postText, userAdditionalContext).issues;
+  const deterministicIssues = validateComment(candidateComment, postText, userAdditionalContext, platform).issues;
   if (deterministicIssues.length > 0) {
     if (parsed.verdict === "PASS") parsed.verdict = "REGENERATE";
     if (deterministicIssues.some((issue) => issue.includes("formulaic") || issue.includes("cliché"))) {
@@ -70,14 +98,17 @@ CANDIDATE:
     parsed.reasons.push(...deterministicIssues);
   }
 
-  if (parsed.verdict === "PASS" && (
-    !parsed.checks.understandsPost || !parsed.checks.followsSelectedAngle ||
-    !parsed.checks.preservesAuthorTopic || !parsed.checks.isNotSummary ||
-    !parsed.checks.isNotGeneric || parsed.checks.fails20PostTest ||
-    !parsed.checks.avoidsTopicHijacking || !parsed.checks.avoidsSelfPromotion ||
-    !parsed.checks.avoidsAISlop || !parsed.checks.soundsNaturalHuman ||
-    !parsed.checks.proportionalLength || !parsed.checks.noFabricatedExperience
-  )) {
+  // Sanity check checks against verdict
+  const failedCrucialChecks =
+    !parsed.checks.understandsPost ||
+    !parsed.checks.preservesAuthorTopic ||
+    !parsed.checks.isNotSummary ||
+    !parsed.checks.avoidsTopicHijacking ||
+    !parsed.checks.avoidsSelfPromotion ||
+    !parsed.checks.avoidsAISlop ||
+    !parsed.checks.noFabricatedExperience;
+
+  if (parsed.verdict === "PASS" && failedCrucialChecks) {
     parsed.verdict = "REGENERATE";
     parsed.reasons.push("The quality checks contradict a publishable verdict.");
   }

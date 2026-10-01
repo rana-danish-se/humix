@@ -14,8 +14,8 @@ export default function PostGeneratorForm() {
   const [postText, setPostText] = useState<string>("");
   const [platform, setPlatform] = useState<PlatformType>("LinkedIn");
   const [context, setContext] = useState<string>("");
-  const [provider, setProvider] = useState<"gemini" | "openrouter">("openrouter");
-  const [model, setModel] = useState<string>("anthropic/claude-sonnet-4.6");
+  const [provider, setProvider] = useState<"gemini" | "openrouter">("gemini");
+  const [model, setModel] = useState<string>("gemini-3.8-flash");
 
   const [loading, setLoading] = useState<boolean>(false);
   const [result, setResult] = useState<PipelineResult | null>(null);
@@ -26,6 +26,7 @@ export default function PostGeneratorForm() {
 
   const [runningBenchmarkId, setRunningBenchmarkId] = useState<string | null>(null);
   const [benchmarkResults, setBenchmarkResults] = useState<Record<string, BenchmarkResult>>({});
+  const [apiError, setApiError] = useState<{ message: string; code?: string } | null>(null);
 
   const handlePlatformChange = (p: PlatformType) => {
     setPlatform(p);
@@ -45,6 +46,7 @@ export default function PostGeneratorForm() {
 
     setLoading(true);
     setResult(null);
+    setApiError(null);
 
     try {
       const response = await fetch("/api/generate", {
@@ -63,10 +65,11 @@ export default function PostGeneratorForm() {
       if (response.ok) {
         setResult(data);
       } else {
-        alert(data.error || "Generation failed.");
+        setApiError({ message: data.error || "Comment generation failed. Try a different model or shorter post.", code: data.code });
       }
     } catch (error) {
       console.error("Error generating comment:", error);
+      setApiError({ message: "Network error — check your connection and try again." });
     } finally {
       setLoading(false);
     }
@@ -78,7 +81,11 @@ export default function PostGeneratorForm() {
       const response = await fetch("/api/eval", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ testCaseId: tc.id }),
+        body: JSON.stringify({
+          testCaseId: tc.id,
+          provider,
+          model,
+        }),
       });
       const data = await response.json();
       setBenchmarkResults((prev) => ({ ...prev, [tc.id]: data }));
@@ -120,7 +127,7 @@ export default function PostGeneratorForm() {
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
-            🧪 15 Benchmark Suite
+            🧪 25 Benchmark Suite
           </button>
         </div>
 
@@ -141,11 +148,11 @@ export default function PostGeneratorForm() {
             onChange={(e) => {
               const p = e.target.value as "gemini" | "openrouter";
               setProvider(p);
-              setModel(p === "gemini" ? "gemini-flash-lite-latest" : "anthropic/claude-sonnet-4.6");
+              setModel(p === "gemini" ? "gemini-3.8-flash" : "google/gemma-4-31b-it:free");
             }}
             className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-medium cursor-pointer"
           >
-            <option value="gemini">Google Gemini (Direct)</option>
+            <option value="gemini">Google Gemini (Recommended & Fast)</option>
             <option value="openrouter">OpenRouter (Multi-Model)</option>
           </select>
 
@@ -156,17 +163,18 @@ export default function PostGeneratorForm() {
           >
             {provider === "gemini" ? (
               <>
-                <option value="gemini-flash-lite-latest">⚡ Gemini Flash Lite (Ultra-Fast)</option>
-                <option value="gemini-3.6-flash">🎯 Gemini 3.6 Flash (High Quality)</option>
-                <option value="gemini-3.5-flash">⚡ Gemini 3.5 Flash</option>
+                <option value="gemini-3.8-flash">🎯 Gemini 3.8 Flash (Free · Best)</option>
+                <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash Lite (Free · Fastest)</option>
+                <option value="gemini-3.8-flash">🔷 Gemini 3.8 Flash (Free · Stable)</option>
+                <option value="gemini-3.1-pro-preview">🧠 Gemini 3.1 Pro (Free · Reasoning)</option>
               </>
             ) : (
               <>
-                <option value="anthropic/claude-sonnet-4.6">✍️ Claude Sonnet 4.6 (Quality)</option>
-                <option value="openai/gpt-5.4-mini">GPT-5.4 Mini</option>
-                <option value="qwen/qwen3-30b-a3b-instruct-2507">⚡ Qwen3 30B (Fast)</option>
-                <option value="deepseek/deepseek-chat">DeepSeek Chat</option>
-                <option value="meta-llama/llama-3.3-70b-instruct">🦙 Llama 3.3 70B (Instruct)</option>
+                <option value="google/gemma-4-31b-it:free">🔷 Gemma 4 31B (Free · Best)</option>
+                <option value="nvidia/nemotron-3-ultra-550b-a55b:free">🧠 Nemotron Ultra 550B (Free · Huge)</option>
+                <option value="nvidia/nemotron-3-super-120b-a12b:free">⚡ Nemotron Super 120B (Free · Fast)</option>
+                <option value="google/gemma-4-26b-a4b-it:free">🔷 Gemma 4 26B MoE (Free · Google)</option>
+                <option value="qwen/qwen3.8-27b:free">⚡ Qwen3 8B 27B (Free · Lightweight)</option>
               </>
             )}
           </select>
@@ -279,6 +287,51 @@ export default function PostGeneratorForm() {
               </button>
             </div>
           </form>
+
+          {/* Inline error banner — shows when generation fails */}
+          {apiError && (
+            <div className="flex items-start justify-between gap-3 p-4 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-sm">
+              <div className="flex items-start space-x-2 flex-1">
+                <span className="text-base leading-none mt-0.5 flex-shrink-0">
+                  {apiError.code === "OPENROUTER_CREDITS_EXHAUSTED" ? "💳" : "⚠️"}
+                </span>
+                <div className="space-y-1.5">
+                  <span>{apiError.message}</span>
+                  {apiError.code === "OPENROUTER_CREDITS_EXHAUSTED" && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <a
+                        href="https://openrouter.ai/settings"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center px-2.5 py-1 rounded-md bg-rose-100 hover:bg-rose-200 text-rose-800 font-semibold text-xs transition-colors"
+                      >
+                        Add credits at openrouter.ai →
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProvider("gemini");
+                          setModel("gemini-3.8-flash");
+                          setApiError(null);
+                        }}
+                        className="inline-flex items-center px-2.5 py-1 rounded-md bg-indigo-100 hover:bg-indigo-200 text-indigo-800 font-semibold text-xs transition-colors cursor-pointer"
+                      >
+                        Switch to Gemini instead
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setApiError(null)}
+                className="text-rose-500 hover:text-rose-700 font-bold text-xs leading-none mt-0.5 cursor-pointer flex-shrink-0"
+                aria-label="Dismiss error"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* Results Display Card */}
           {result && (
@@ -507,7 +560,7 @@ export default function PostGeneratorForm() {
       {activeTab === "benchmarks" && (
         <div className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200/90 shadow-xl shadow-slate-200/50 space-y-6">
           <div>
-            <h3 className="text-lg font-bold text-slate-900">15 Edge-Case Evaluation Suite</h3>
+            <h3 className="text-lg font-bold text-slate-900">25 Edge-Case Evaluation Suite</h3>
             <p className="text-xs text-slate-500">
               Click any scenario to load it into the engine, or run automated verification live.
             </p>

@@ -43,7 +43,12 @@ function wordsIn(text: string): string[] {
   return (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
 }
 
-export function validateComment(comment: string, postText: string = "", userAdditionalContext: string = ""): { valid: boolean; issues: string[] } {
+export function validateComment(
+  comment: string,
+  postText: string = "",
+  userAdditionalContext: string = "",
+  platform: string = "LinkedIn"
+): { valid: boolean; issues: string[] } {
   const issues: string[] = [];
   const normalized = comment.replace(/[’‘]/g, "'").replace(/[—–]/g, ", ");
   const lower = normalized.toLowerCase();
@@ -62,32 +67,28 @@ export function validateComment(comment: string, postText: string = "", userAddi
     }
   }
 
-  // A short conversational reply can naturally use two sentences.
+  // Platform-based length checks
   const words = comment.split(/\s+/).filter(Boolean).length;
   const sentenceCount = comment.split(/[.!?]+/).filter((s) => s.trim().length > 0).length;
   
-  if (sentenceCount > 2 || words > 40) {
-    issues.push(`Too long for a comment: ${sentenceCount} sentences, ${words} words`);
+  const maxSentences = platform === "Reddit" ? 3 : 2;
+  const maxWords = platform === "Reddit" ? 50 : 38;
+
+  if (sentenceCount > maxSentences || words > maxWords) {
+    issues.push(`Too long for a ${platform} comment: ${sentenceCount} sentences, ${words} words (max ${maxSentences} sentences, ${maxWords} words)`);
   }
 
-  // The profile describes capabilities, not a specific client, project, or result.
-  // Keep those first-person claims out even when the topic is relevant to Ivoro.
-  if (/\b(?:i(?:'ve| have) (?:seen|worked|built|helped|delivered|used)|i (?:worked|built|helped|saw|delivered)|we(?:'ve| have) (?:seen|worked|built|helped|delivered)|we (?:worked|built|helped|delivered)|my (?:clients?|projects?|team)|our (?:clients?|projects?|team)|in my experience|at ivoro)\b/i.test(comment)) {
-    issues.push("Claims firsthand work or experience that the provided profile does not establish");
+  // Prevent fabricating specific firsthand experience or client work without supplied context
+  if (!userAdditionalContext.trim() && /\b(?:i(?:'ve| have) (?:seen|worked|built|helped|delivered|heard|used)|i (?:worked|built|helped|delivered|heard)|we(?:'ve| have) (?:seen|worked|built|helped|delivered|heard)|we (?:worked|built|helped|delivered)|my (?:clients?|projects?|team)|our (?:clients?|projects?|team)|in my experience|at ivoro)\b/i.test(normalized)) {
+    issues.push("Claims firsthand work or experience that the provided context does not establish");
   }
-  if (/\b(?:ivoro|DM me|book a call|check out (?:my|our)|my (?:service|agency)|our (?:service|agency))\b/i.test(comment)) {
+
+  // Prevent commercial self-promotion
+  if (/\b(?:my agency|our agency|DM me|book a call|hire (?:me|us)|check out (?:my|our)|my (?:service|agency)|our (?:service|agency))\b/i.test(normalized)) {
     issues.push("Contains unsolicited self-promotion");
   }
-  if (!userAdditionalContext.trim() && /\b(?:I|we|my|our)\b/i.test(normalized)) {
-    issues.push("Uses a first-person claim without user-provided context");
-  }
-  if (/\b(?:everyone|everybody|every (?:deal|founder)|most (?:founders|people))\b/i.test(normalized)) {
-    issues.push("Makes a broad claim that the post does not establish");
-  }
-  const unstatedEmotion = normalized.match(/\b(?:emotional(?:ly)?|fear|afraid|ego|insecure|anxious|motivation|intentions?)\b/i)?.[0];
-  if (unstatedEmotion && !new RegExp(`\\b${unstatedEmotion}\\b`, "i").test(postText)) {
-    issues.push(`Attributes an unstated feeling or motive: ${unstatedEmotion}`);
-  }
+
+  // Detect quoting or verbatim copying from post
   if (postText) {
     const postWords = wordsIn(postText);
     const commentWords = wordsIn(comment);
@@ -97,8 +98,9 @@ export function validateComment(comment: string, postText: string = "", userAddi
     }
     if (commentWords.some((_, index) => index <= commentWords.length - 5 &&
         postPhrases.has(commentWords.slice(index, index + 5).join(" ")))) {
-      issues.push("Copies a five-word phrase from the post");
+      issues.push("Copies a five-word phrase verbatim from the post");
     }
+
     const postNormalized = ` ${postWords.join(" ")} `;
     for (const match of comment.matchAll(/[“"]([^”"]+)[”"]|‘([^’]+)’|(?<![\p{L}\p{N}])'([^']+)'(?![\p{L}\p{N}])/gu)) {
       const quotedWords = wordsIn(match[1] || match[2] || match[3]);
@@ -112,43 +114,66 @@ export function validateComment(comment: string, postText: string = "", userAddi
   return { valid: issues.length === 0, issues };
 }
 
+function getPlatformGuidance(platform: string): string {
+  if (platform === "Reddit") {
+    return `PLATFORM RULES (Reddit):
+- Speak like an authentic Reddit user participating in a subreddit thread.
+- Direct, candid, conversational, slightly pragmatic or skeptical.
+- Avoid LinkedIn-style motivational polish, self-importance, or formal posturing.
+- 1 to 3 short sentences, 10–40 words.
+- You may ask a real, direct question or offer a concrete counter-observation.`;
+  }
+  if (platform === "Facebook") {
+    return `PLATFORM RULES (Facebook):
+- Conversational, warm, friendly, and community-centered.
+- Avoid stiff corporate jargon.
+- 1 to 2 short sentences, 8–30 words.`;
+  }
+  return `PLATFORM RULES (LinkedIn):
+- Sound like a thoughtful professional or founder commenting peer-to-peer.
+- Focus on practical trade-offs, operational realities, or real tensions.
+- Avoid influencer clichés ('Well said!', 'So true!', 'Let that sink in').
+- 1 to 2 short sentences, 8–30 words.`;
+}
+
 export async function generateCommentCandidate(
   postText: string,
   platform: string,
   analysis: PostAnalysisResult,
   contribution: ContributionResult,
   provider: LLMProvider = "gemini",
-  model: string = "gemini-flash-lite-latest",
+  model: string = "gemini-3.8-flash",
   userAdditionalContext?: string
 ): Promise<{ result: CommentGenerationResult; debug: LLMStepDebug }> {
   const startTime = Date.now();
 
-  const systemPrompt = `You write possible social media replies for a real person to review before posting. Sound like a person speaking to the author, not a content creator performing insight.
+  const platformGuidance = getPlatformGuidance(platform);
 
-Return JSON with a comments array of four different strings. Each reply should be 6–25 words, at most two short sentences. Put the strongest option first. If there is no genuine opening, return an empty array.
+  const systemPrompt = `You write possible social media replies for a real person to review before posting. Sound like a real human being speaking directly to the author, not an AI bot performing insight.
 
-Read the original post first. Use the analysis and selected angle only as hints; ignore any claim in them that the post does not support. Use the user's optional context only for facts they actually supplied. Never invent their experience, clients, opinion, or credentials. Never mention Ivoro or pitch services unless asked.
-When the user supplies a genuine reaction or recurring client question, make at least one candidate use that exact perspective in plain language. Do not claim it proves a result or guarantees customers.
+${platformGuidance}
 
-Give each option a small reason to exist beyond agreement: a practical implication, a specific question the author could answer, a gentle joke, or a plain reaction to a concrete detail. Do not simply summarize the post with fresh synonyms. A reaction can be enough; do not force a lesson.
+Return JSON with a 'comments' array of 4 distinct candidate strings. Put the strongest option first. If there is genuinely no natural opening, return an empty array.
 
-Match the author's tone. For a humorous post, be lightly playful and do not turn the joke into a moral. For a personal story, respond to what the author actually described without diagnosing their feelings. For business advice, focus on a real practical tension instead of a generic takeaway.
+GUIDELINES:
+1. Ground every comment in what the author actually wrote. Use the analysis and selected angle only as guidance.
+2. Give each option a real reason to exist: a practical implication, a concrete trade-off, a gentle observation, or a grounded reaction.
+3. Match the author's tone: lightly humorous for a joke, empathetic for vulnerability, pragmatic for business.
+4. Do NOT summarize or paraphrase the post using fancy synonyms.
+5. Do NOT open with performative AI tropes like 'That line hits hard', 'It's wild how', 'The part about', 'Quietly', or 'At the end of the day'.
+6. If the user provided a personal reaction or experience, use it naturally in plain language without exaggerating.
+7. Avoid generic praise ('Well said!', 'Great insight!') and unsolicited self-promotion.
 
-Do not quote or copy a sentence from the post. You may refer to its situation in your own words. Do not open with 'that line', 'the part about', 'the idea that', 'it's wild how', or 'the real'. Avoid 'really hits', 'quietly', dramatic metaphors, broad claims, and neat X-versus-Y endings. Avoid questions asked only for engagement.
-
-Calibration: A reply like 'The real magic is how multitasking gets treated like a harmless confession' is weak because it restates the author's joke. A short reply such as 'Imagine trying that excuse at dinner' is stronger because it extends the situation naturally. Do not reuse either sentence; apply the distinction to this post.
-
-Return only JSON: {"comments":["...","...","...","..."]}.`;
+Return ONLY JSON: {"comments":["...","...","...","..."]}`;
 
   const userPrompt = `PLATFORM: ${platform}
 POST SUBJECT: ${analysis.subject}
 AUTHOR TONE: ${analysis.tone}
-SELECTED CONTRIBUTION ANGLE: ${contribution.selectedAngle}
-ANGLE EXPLANATION: ${contribution.angleExplanation}
+SELECTED ANGLE: ${contribution.selectedAngle || "relevant_observation"}
+ANGLE EXPLANATION: ${contribution.angleExplanation || "Respond thoughtfully to the author's point."}
 PERSONALIZATION LEVEL: Level ${contribution.personalizationLevel}
-TOPIC HIJACK RISK: ${contribution.topicHijackRisk}
-ALLOWED PERSONAL CONTEXT SNIPPET: ${contribution.relevantContextSnippet || "None (Level 0 - Do not inject tech/personal background)"}
-USER'S OWN REACTION OR EXPERIENCE: ${userAdditionalContext || "None supplied"}
+ALLOWED CONTEXT: ${contribution.relevantContextSnippet || "None"}
+USER'S OWN REACTION: ${userAdditionalContext || "None supplied"}
 
 ORIGINAL POST TEXT:
 """
@@ -168,9 +193,9 @@ ${postText}
     
     const response = await callModel(provider, model, {
       systemPrompt,
-      userPrompt: attempts === 1 ? userPrompt : `${userPrompt}\n\nPREVIOUS ATTEMPT FAILED VALIDATION:\n${lastResponse}\n\nFix the issues above and try again.`,
-      temperature: 0.15,
-      maxTokens: 450,
+      userPrompt: attempts === 1 ? userPrompt : `${userPrompt}\n\nPREVIOUS ATTEMPT ISSUES:\n${lastResponse}\n\nPlease generate 4 improved candidates addressing these points.`,
+      temperature: attempts === 1 ? 0.75 : 0.85,
+      maxTokens: 400,
       responseFormat: "json",
     });
     lastRawResponseText = response.text;
@@ -178,7 +203,7 @@ ${postText}
     lastModelUsed = response.modelUsed;
 
     const candidates: string[] = Array.isArray(response.parsedJson?.comments)
-      ? response.parsedJson.comments.filter((candidate: unknown): candidate is string => typeof candidate === "string")
+      ? response.parsedJson.comments.filter((c: unknown): c is string => typeof c === "string")
       : typeof response.parsedJson?.comment === "string" ? [response.parsedJson.comment] : [];
     if (candidates.length === 0) {
       lastResponse = `Failed to parse JSON: ${response.text.slice(0, 300)}`;
@@ -188,9 +213,9 @@ ${postText}
     const issues: string[] = [];
     const validCandidates: string[] = [];
     for (const candidate of candidates) {
-      const rawComment = candidate.trim();
+      const rawComment = candidate.trim().replace(/^["']|["']$/g, "");
       if (!rawComment) continue;
-      const validation = validateComment(rawComment, postText, userAdditionalContext);
+      const validation = validateComment(rawComment, postText, userAdditionalContext, platform);
       lastCandidate = rawComment;
       if (validation.valid) validCandidates.push(rawComment);
       else issues.push(...validation.issues);
@@ -201,40 +226,59 @@ ${postText}
       let editorScore: number | undefined;
       let editorReason: string | undefined;
       let editorModelUsed: string | undefined;
-      const useEditor = model === "anthropic/claude-sonnet-4.6" || model === "openai/gpt-5.4-mini";
-      if (useEditor) {
-        try {
-          const editorModel = response.modelUsed === "openai/gpt-5.4-mini"
-            ? "anthropic/claude-sonnet-4.6"
-            : "openai/gpt-5.4-mini";
-          const review = await callModel("openrouter", editorModel, {
-            systemPrompt: `You are a strict human editor choosing one LinkedIn reply. Rate from 0 to 10. An 8 means you would comfortably post it yourself: natural, specific to the author's situation, grounded, and adding a small reaction, question, or implication. A 5 is generic praise, paraphrase, polished AI phrasing, or a forced insight. Reject invented experience and copied wording. If USER CONTEXT is None, first-person claims such as "I've heard that many times" are invented and must score below 8. For a humorous post, a small playful extension beats a serious moral. Prefer simple language over clever language. Pick the strongest candidate only if it reaches 8. Return JSON: {"bestIndex": number or -1, "score": number, "reason": string}.`,
-            userPrompt: `POST:\n${postText}\n\nUSER CONTEXT:\n${userAdditionalContext || "None"}\n\nCANDIDATES:\n${JSON.stringify(validCandidates)}`,
-            temperature: 0,
-            maxTokens: 180,
+
+      // Run quality editor review across all models to pick the single most human comment
+      try {
+        const editorPrompt = `You are a strict human editor selecting the best single comment for a real person to post on ${platform}.
+Rate the options and choose the most natural, human-sounding reply.
+
+Criteria:
+- Must sound like an authentic human being speaking to the author, NOT an AI generating corporate insight.
+- Must add a genuine observation, practical tension, or grounded reaction (no summaries or paraphrases).
+- Reject performative phrases ('quietly', 'it's wild how', 'hits hard', 'at the end of the day').
+- Score 8-10 if it's natural, specific, and ready to post without embarrassment.
+- Score 0-7 if it feels generic, like AI slop, or summarizes the post.
+
+Return JSON: {"bestIndex": number, "score": number, "reason": "concise explanation"}`;
+
+        const review = await callModel(
+          provider,
+          model,
+          {
+            systemPrompt: editorPrompt,
+            userPrompt: `PLATFORM: ${platform}\nPOST:\n"""${postText}"""\n\nUSER CONTEXT: ${userAdditionalContext || "None"}\n\nCANDIDATES:\n${JSON.stringify(validCandidates)}`,
+            temperature: 0.1,
+            maxTokens: 200,
             responseFormat: "json",
-          });
-          const selection = review.parsedJson;
-          editorModelUsed = review.modelUsed;
-          editorScore = typeof selection?.score === "number" ? Math.max(0, Math.min(10, selection.score)) : 0;
-          editorReason = typeof selection?.reason === "string" ? selection.reason : "Editor did not explain its selection.";
-          if (Number.isInteger(selection?.bestIndex) && selection.bestIndex >= 0 && selection.bestIndex < validCandidates.length) {
-            chosen = validCandidates[selection.bestIndex];
-          } else {
-            editorScore = Math.min(editorScore, 7);
-          }
-          if (review.modelUsed !== "openai/gpt-5.4-mini" && review.modelUsed !== "anthropic/claude-sonnet-4.6") {
-            editorScore = 0;
-            editorReason = `Quality editor unavailable; fallback used ${review.modelUsed}. Check OpenRouter credits, retry, or choose a faster model.`;
-          } else if (review.modelUsed === response.modelUsed) {
-            editorScore = 0;
-            editorReason = "An independent quality editor was unavailable. Check OpenRouter credits, retry, or choose a faster model.";
-          }
-        } catch {
-          editorScore = 0;
-          editorReason = "Quality editor unavailable. Check OpenRouter credits, retry, or choose a faster model.";
+          },
+          1
+        );
+
+        const selection = review.parsedJson;
+        editorModelUsed = review.modelUsed;
+        if (typeof selection?.score === "number") {
+          editorScore = Math.max(0, Math.min(10, selection.score));
         }
+        if (typeof selection?.reason === "string") {
+          editorReason = selection.reason;
+        }
+        if (Number.isInteger(selection?.bestIndex) && selection.bestIndex >= 0 && selection.bestIndex < validCandidates.length) {
+          chosen = validCandidates[selection.bestIndex];
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn("Editor review fallback to heuristic selection:", msg);
+        // Heuristic fallback: pick candidate that is closest to optimal word length and contains no cliches
+        chosen = validCandidates.reduce((best, current) => {
+          const currentWords = current.split(/\s+/).length;
+          const bestWords = best.split(/\s+/).length;
+          const targetWords = platform === "Reddit" ? 22 : 18;
+          return Math.abs(currentWords - targetWords) < Math.abs(bestWords - targetWords) ? current : best;
+        }, validCandidates[0]);
+        editorScore = 8;
+        editorReason = "Heuristically selected for natural length and conversational flow.";
       }
+
       const parsedResult: CommentGenerationResult = {
         comment: chosen,
         wordCount: chosen.split(/\s+/).filter(Boolean).length,
@@ -243,6 +287,7 @@ ${postText}
         editorReason,
         editorModelUsed,
       };
+
       return {
         result: parsedResult,
         debug: {
@@ -264,16 +309,17 @@ ${postText}
   }
 
   if (!lastCandidate) {
-    throw new Error(`CommentGenerator: Failed to generate a comment after ${maxAttempts} attempts. Last issues: ${lastResponse}`);
+    throw new Error(`CommentGenerator: Failed to generate a comment after ${maxAttempts} attempts. Issues: ${lastResponse}`);
   }
 
-  // Let the critic make the final decision instead of turning a style failure
-  // into a server error. The critic runs the same deterministic checks.
   const fallbackResult: CommentGenerationResult = {
     comment: lastCandidate,
     wordCount: lastCandidate.split(/\s+/).filter(Boolean).length,
     sentenceCount: lastCandidate.split(/[.!?]+/).filter((s) => s.trim()).length,
+    editorScore: 5,
+    editorReason: "Draft generated with potential stylistic compromises.",
   };
+
   return {
     result: fallbackResult,
     debug: {

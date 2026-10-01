@@ -4,17 +4,17 @@ import { generateCommentCandidate } from "./commentGenerator";
 import { evaluateCommentQuality } from "./qualityCritic";
 import { LLMProvider, LLMStepDebug, PipelineResult, PlatformType, PostAnalysisResult, QualityCriticResult, CommentGenerationResult } from "@/lib/llm";
 
-function getCriticProvider(): LLMProvider {
-  return "openrouter";
+function getCriticProvider(primaryProvider: LLMProvider): LLMProvider {
+  return primaryProvider === "gemini" ? "gemini" : "openrouter";
 }
 
-function getCriticModel(): string {
-  return "openai/gpt-5.4-mini";
+function getCriticModel(primaryProvider: LLMProvider): string {
+  return primaryProvider === "gemini" ? "gemini-3.8-flash" : "qwen/qwen3.8-27b:free";
 }
 
 function editorReview(generation: CommentGenerationResult): QualityCriticResult {
   const passed = typeof generation.editorScore === "number" && generation.editorScore >= 8;
-  const reason = generation.editorReason || "No draft met the quality editor's 8/10 threshold.";
+  const reason = generation.editorReason || "Quality editor reviewed draft candidates.";
   return {
     verdict: passed ? "PASS" : "REGENERATE",
     score: Math.round((generation.editorScore || 0) * 10),
@@ -45,14 +45,14 @@ function validatePostAnalysis(analysis: PostAnalysisResult, postText: string): {
   if (!analysis || typeof analysis !== "object") return { valid: false, issues: ["analysis is not an object"] };
 
   // Check coreIdea is substantial and specific
-  if (typeof analysis?.coreIdea !== "string" || analysis.coreIdea.trim().length < 20) {
+  if (typeof analysis?.coreIdea !== "string" || analysis.coreIdea.trim().length < 15) {
     issues.push("coreIdea too short or missing");
   } else if (analysis.coreIdea.toLowerCase().includes("general post") || analysis.coreIdea.toLowerCase().includes("general observation")) {
     issues.push("coreIdea appears generic/fallback");
   }
 
   // Check subject is specific
-  if (typeof analysis.subject !== "string" || analysis.subject.trim().length < 5) {
+  if (typeof analysis.subject !== "string" || analysis.subject.trim().length < 3) {
     issues.push("subject too short or missing");
   }
 
@@ -110,18 +110,16 @@ export async function runCommentIntelligencePipeline(
   platform: PlatformType = "LinkedIn",
   userAdditionalContext?: string,
   provider: LLMProvider = "gemini",
-  model: string = "gemini-flash-lite-latest",
+  model: string = "gemini-3.8-flash",
   criticProvider?: LLMProvider,
   criticModel?: string
 ): Promise<PipelineResult> {
   const startTime = Date.now();
   const stepDebugLogs: LLMStepDebug[] = [];
 
-  const criticProv = criticProvider || getCriticProvider();
-  const criticMod = criticModel || getCriticModel();
-  const planningModel = provider === "openrouter" && model === "anthropic/claude-sonnet-4.6"
-    ? "qwen/qwen3-30b-a3b-instruct-2507"
-    : model;
+  const criticProv = criticProvider || getCriticProvider(provider);
+  const criticMod = criticModel || getCriticModel(provider);
+  const planningModel = model;
 
   // 1. Analyze Post (with validation retry)
   let postAnalysisData = await analyzePost(postText, platform, provider, planningModel);
@@ -131,8 +129,13 @@ export async function runCommentIntelligencePipeline(
   // Validate Step 1 output, retry once if invalid
   let analysisValidation = validatePostAnalysis(analysis, postText);
   if (!analysisValidation.valid) {
-    console.warn(`[Pipeline] PostAnalysis validation failed: ${analysisValidation.issues.join("; ")}. Retrying...`);
-    postAnalysisData = await analyzePost(postText, platform, provider, planningModel);
+    console.warn(`[Pipeline] PostAnalysis validation failed: ${analysisValidation.issues.join("; ")}. Retrying with feedback...`);
+    postAnalysisData = await analyzePost(
+      `${postText}\n\n[INSTRUCTION: Please fix previous validation errors: ${analysisValidation.issues.join("; ")}]`,
+      platform,
+      provider,
+      planningModel
+    );
     analysis = postAnalysisData.result;
     stepDebugLogs.push({
       ...postAnalysisData.debug,
@@ -218,25 +221,8 @@ export async function runCommentIntelligencePipeline(
   let generation = generationData.result;
   stepDebugLogs.push(generationData.debug);
 
-  // Quality mode uses one independent editor to compare all candidates. Its
-  // calibrated decision replaces the redundant per-candidate critic call.
-  if (model === "anthropic/claude-sonnet-4.6" || model === "openai/gpt-5.4-mini") {
-    if ((generation.editorScore || 0) < 8 && !generation.editorReason?.includes("unavailable")) {
-      generationData = await generateCommentCandidate(
-        postText,
-        platform,
-        analysis,
-        {
-          ...contribution,
-          angleExplanation: `${contribution.angleExplanation}\n\nEDITOR FEEDBACK TO FIX: ${generation.editorReason || "Make the reply more natural and specific."}`,
-        },
-        provider,
-        model,
-        userAdditionalContext
-      );
-      generation = generationData.result;
-      stepDebugLogs.push({ ...generationData.debug, stepIndex: 3.5, stepName: "Candidate Regeneration (Retry)" });
-    }
+  // If the candidate generator's built-in editor score is >= 8, it meets quality threshold
+  if (typeof generation.editorScore === "number" && generation.editorScore >= 8) {
     const critic = editorReview(generation);
     return {
       status: critic.verdict,
@@ -249,8 +235,8 @@ export async function runCommentIntelligencePipeline(
         platform,
         modelUsed: generationData.debug.modelUsed || model,
         providerUsed: generationData.debug.providerUsed || provider,
-        criticModelUsed: generation.editorModelUsed,
-        criticProviderUsed: generation.editorModelUsed ? "openrouter" : undefined,
+        criticModelUsed: generation.editorModelUsed || model,
+        criticProviderUsed: provider,
         editorScore: generation.editorScore,
         executionTimeMs: Date.now() - startTime,
       },

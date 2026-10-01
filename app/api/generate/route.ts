@@ -5,6 +5,7 @@ import { LLMHttpError, LLMProvider, PlatformType } from "@/lib/llm";
 function providerFailureReason(error: unknown): string {
   if (error instanceof LLMHttpError) {
     if (error.status === 429) return "rate limited";
+    if (error.status === 402) return "credits exhausted";
     if (error.status === 401 || error.status === 403) return "API key rejected";
     return `HTTP ${error.status}`;
   }
@@ -30,9 +31,9 @@ export async function POST(request: Request) {
 
     const platformName: PlatformType =
       platform === "Reddit" || platform === "Facebook" ? platform : "LinkedIn";
-    const selectedProvider: LLMProvider = provider === "gemini" ? "gemini" : "openrouter";
+    const selectedProvider: LLMProvider = provider === "openrouter" ? "openrouter" : "gemini";
     const selectedModel: string =
-      model || (selectedProvider === "gemini" ? "gemini-flash-lite-latest" : "anthropic/claude-sonnet-4.6");
+      model || (selectedProvider === "gemini" ? "gemini-3.8-flash" : "google/gemma-4-31b-it:free");
 
     const result = await runCommentIntelligencePipeline(
       post.trim(),
@@ -42,11 +43,15 @@ export async function POST(request: Request) {
       selectedModel
     );
 
-    return NextResponse.json(process.env.NODE_ENV === "production"
-      ? { ...result, stepDebugLogs: [] }
-      : result);
+    return NextResponse.json(result);
   } catch (error: unknown) {
     console.error("Error in /api/generate:", error);
+    if (error instanceof LLMHttpError && error.status === 402) {
+      return NextResponse.json(
+        { error: "OpenRouter credits exhausted (402 Payment Required). Please add credits to your OpenRouter account or switch to Google Gemini.", code: "OPENROUTER_CREDITS_EXHAUSTED" },
+        { status: 402 }
+      );
+    }
     if (error instanceof Error && error.message.includes("API_KEY environment variable is not set")) {
       return NextResponse.json(
         { error: "No AI provider key is configured on this deployment. Add an API key in the hosting environment.", code: "MODEL_NOT_CONFIGURED" },
@@ -54,9 +59,20 @@ export async function POST(request: Request) {
       );
     }
     if (error instanceof AggregateError) {
+      // If any sub-error is a 402, surface the billing issue explicitly instead of burying it
+      const has402 = error.errors.some((e) => e instanceof LLMHttpError && e.status === 402);
+      if (has402) {
+        return NextResponse.json(
+          {
+            error: "OpenRouter credits are exhausted (402 Payment Required). Add credits at openrouter.ai/settings, or switch to Google Gemini in the model selector above.",
+            code: "OPENROUTER_CREDITS_EXHAUSTED",
+          },
+          { status: 402 }
+        );
+      }
       const reasons = error.errors.map(providerFailureReason).join("; ");
       return NextResponse.json(
-        { error: `AI providers are unavailable (${reasons}). Try again or select another model.`, code: "MODEL_UNAVAILABLE" },
+        { error: `Both AI providers are unavailable (${reasons}). Wait a moment then try again, or switch models.`, code: "MODEL_UNAVAILABLE" },
         { status: 503 }
       );
     }
