@@ -141,9 +141,11 @@ export async function generateCommentCandidate(
   platform: string,
   analysis: PostAnalysisResult,
   contribution: ContributionResult,
-  provider: LLMProvider = "gemini",
-  model: string = "gemini-3.8-flash",
-  userAdditionalContext?: string
+  provider: LLMProvider = "openrouter",
+  model: string = "nvidia/nemotron-3-ultra-550b-a55b:free",
+  userAdditionalContext?: string,
+  editorProvider: LLMProvider = "groq",
+  editorModel: string = "openai/gpt-oss-120b"
 ): Promise<{ result: CommentGenerationResult; debug: LLMStepDebug }> {
   const startTime = Date.now();
 
@@ -242,8 +244,8 @@ Criteria:
 Return JSON: {"bestIndex": number, "score": number, "reason": "concise explanation"}`;
 
         const review = await callModel(
-          provider,
-          model,
+          editorProvider,
+          editorModel,
           {
             systemPrompt: editorPrompt,
             userPrompt: `PLATFORM: ${platform}\nPOST:\n"""${postText}"""\n\nUSER CONTEXT: ${userAdditionalContext || "None"}\n\nCANDIDATES:\n${JSON.stringify(validCandidates)}`,

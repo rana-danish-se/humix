@@ -16,8 +16,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Test case not found" }, { status: 404 });
     }
 
-    const selectedProvider = provider === "openrouter" ? "openrouter" : "gemini";
-    const selectedModel = model || (selectedProvider === "gemini" ? "gemini-3.8-flash" : "google/gemma-4-31b-it:free");
+    const selectedProvider =
+      provider === "groq" || provider === "gemini" || provider === "openrouter"
+        ? provider
+        : "collaborative";
+    const selectedModel =
+      model ||
+      (selectedProvider === "collaborative"
+        ? undefined
+        : selectedProvider === "groq"
+        ? "openai/gpt-oss-120b"
+        : selectedProvider === "gemini"
+        ? "gemini-3.7-flash"
+        : "nvidia/nemotron-3-ultra-550b-a55b:free");
 
     const result = await runCommentIntelligencePipeline(
       tc.postText,

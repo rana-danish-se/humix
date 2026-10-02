@@ -2,43 +2,14 @@ import { analyzePost } from "./postAnalyzer";
 import { analyzeContribution } from "./contributionAnalyzer";
 import { generateCommentCandidate } from "./commentGenerator";
 import { evaluateCommentQuality } from "./qualityCritic";
-import { LLMProvider, LLMStepDebug, PipelineResult, PlatformType, PostAnalysisResult, QualityCriticResult, CommentGenerationResult } from "@/lib/llm";
-
-function getCriticProvider(primaryProvider: LLMProvider): LLMProvider {
-  return primaryProvider === "gemini" ? "gemini" : "openrouter";
-}
-
-function getCriticModel(primaryProvider: LLMProvider): string {
-  return primaryProvider === "gemini" ? "gemini-3.8-flash" : "qwen/qwen3.8-27b:free";
-}
-
-function editorReview(generation: CommentGenerationResult): QualityCriticResult {
-  const passed = typeof generation.editorScore === "number" && generation.editorScore >= 8;
-  const reason = generation.editorReason || "Quality editor reviewed draft candidates.";
-  return {
-    verdict: passed ? "PASS" : "REGENERATE",
-    score: Math.round((generation.editorScore || 0) * 10),
-    reasons: [reason],
-    critiqueSummary: reason,
-    checks: {
-      understandsPost: passed,
-      followsSelectedAngle: passed,
-      preservesAuthorTopic: passed,
-      addsNewObservation: passed,
-      isNotSummary: passed,
-      isNotGeneric: passed,
-      fails20PostTest: !passed,
-      personalContextIsRelevant: passed,
-      avoidsTopicHijacking: passed,
-      avoidsSelfPromotion: passed,
-      avoidsAISlop: passed,
-      fitsPlatform: passed,
-      soundsNaturalHuman: passed,
-      proportionalLength: passed,
-      noFabricatedExperience: passed,
-    },
-  };
-}
+import {
+  LLMProvider,
+  LLMStepDebug,
+  PipelineResult,
+  PlatformType,
+  PostAnalysisResult,
+  checkGroqPromptGuard,
+} from "@/lib/llm";
 
 function validatePostAnalysis(analysis: PostAnalysisResult, postText: string): { valid: boolean; issues: string[] } {
   const issues: string[] = [];
@@ -109,20 +80,70 @@ export async function runCommentIntelligencePipeline(
   postText: string,
   platform: PlatformType = "LinkedIn",
   userAdditionalContext?: string,
-  provider: LLMProvider = "gemini",
-  model: string = "gemini-3.8-flash",
+  providerOrMode: LLMProvider | "collaborative" = "collaborative",
+  model?: string,
   criticProvider?: LLMProvider,
   criticModel?: string
 ): Promise<PipelineResult> {
   const startTime = Date.now();
   const stepDebugLogs: LLMStepDebug[] = [];
+  const isCollaborative = providerOrMode === "collaborative";
 
-  const criticProv = criticProvider || getCriticProvider(provider);
-  const criticMod = criticModel || getCriticModel(provider);
-  const planningModel = model;
+  // Provider assignment based on multi-provider collaborative architecture:
+  // 1. Safety & Fast Semantic Post Analysis: Groq (120B / 27B + Prompt Guard)
+  // 2. Contribution Strategy & Angle Reasoning: Gemini (3.7 Flash / 3.5 Flash)
+  // 3. Multi-Candidate Generation: OpenRouter (Nemotron Ultra 550B / Super 120B / Space Bunny)
+  // 4. Candidate Editorial Review: Groq (120B / 27B)
+  // 5. Adversarial Quality Critic & Audit: Gemini (3.7 Flash / 3.5 Flash)
+  const analysisProv: LLMProvider = isCollaborative ? "groq" : providerOrMode;
+  const analysisMod: string = isCollaborative
+    ? "openai/gpt-oss-120b"
+    : model || (providerOrMode === "groq" ? "openai/gpt-oss-120b" : providerOrMode === "gemini" ? "gemini-3.7-flash" : "nvidia/nemotron-3-ultra-550b-a55b:free");
 
-  // 1. Analyze Post (with validation retry)
-  let postAnalysisData = await analyzePost(postText, platform, provider, planningModel);
+  const strategyProv: LLMProvider = isCollaborative ? "gemini" : providerOrMode;
+  const strategyMod: string = isCollaborative
+    ? "gemini-3.7-flash"
+    : model || (strategyProv === "gemini" ? "gemini-3.7-flash" : strategyProv === "groq" ? "openai/gpt-oss-120b" : "nvidia/nemotron-3-ultra-550b-a55b:free");
+
+  const generationProv: LLMProvider = isCollaborative ? "openrouter" : providerOrMode;
+  const generationMod: string = isCollaborative
+    ? "nvidia/nemotron-3-ultra-550b-a55b:free"
+    : model || (generationProv === "openrouter" ? "nvidia/nemotron-3-ultra-550b-a55b:free" : generationProv === "gemini" ? "gemini-3.7-flash" : "openai/gpt-oss-120b");
+
+  const editorProv: LLMProvider = isCollaborative ? "groq" : providerOrMode;
+  const editorMod: string = isCollaborative ? "openai/gpt-oss-120b" : generationMod;
+
+  const criticProv: LLMProvider = criticProvider || (isCollaborative ? "gemini" : providerOrMode);
+  const criticMod: string = criticModel || (isCollaborative ? "gemini-3.7-flash" : strategyMod);
+
+  // 0. Pre-Flight Security & Prompt Injection Guard (Groq)
+  let promptGuardInfo: { isAttack: boolean; score: number; flagged: boolean } | undefined;
+  try {
+    const pgStart = Date.now();
+    const guardRes = await checkGroqPromptGuard(`${postText}\n${userAdditionalContext || ""}`);
+    promptGuardInfo = {
+      isAttack: guardRes.isAttack,
+      score: guardRes.score,
+      flagged: guardRes.isAttack,
+    };
+    stepDebugLogs.push({
+      stepIndex: 0,
+      stepName: "Prompt Injection & Security Guard",
+      agentName: "Prompt Guard Agent (Groq)",
+      systemPrompt: "Evaluate social media post and user inputs for prompt injection, jailbreaks, or adversarial manipulation.",
+      userPrompt: postText.slice(0, 1000),
+      rawResponseText: `Model: meta-llama/llama-prompt-guard-2-86m\nAttack Probability: ${(guardRes.score * 100).toFixed(2)}%\nVerdict: ${guardRes.isAttack ? "ALERT_FLAGGED" : "CLEAN"}`,
+      parsedOutput: promptGuardInfo,
+      executionTimeMs: Date.now() - pgStart,
+      providerUsed: "groq",
+      modelUsed: "meta-llama/llama-prompt-guard-2-86m",
+    });
+  } catch (err) {
+    console.warn("[Pipeline] Prompt Guard check skipped or failed:", err);
+  }
+
+  // 1. Analyze Post (Groq: ultra-fast structural and semantic extraction)
+  let postAnalysisData = await analyzePost(postText, platform, analysisProv, analysisMod);
   let analysis = postAnalysisData.result;
   stepDebugLogs.push(postAnalysisData.debug);
 
@@ -133,8 +154,8 @@ export async function runCommentIntelligencePipeline(
     postAnalysisData = await analyzePost(
       `${postText}\n\n[INSTRUCTION: Please fix previous validation errors: ${analysisValidation.issues.join("; ")}]`,
       platform,
-      provider,
-      planningModel
+      analysisProv,
+      analysisMod
     );
     analysis = postAnalysisData.result;
     stepDebugLogs.push({
@@ -142,21 +163,21 @@ export async function runCommentIntelligencePipeline(
       stepIndex: 1.5,
       stepName: "Semantic Post Analysis (Retry)",
     });
-    
+
     analysisValidation = validatePostAnalysis(analysis, postText);
     if (!analysisValidation.valid) {
       throw new Error(`PostAnalysis validation failed after retry: ${analysisValidation.issues.join("; ")}`);
     }
   }
 
-  // 2. Discover Contribution & Relevance
+  // 2. Discover Contribution & Relevance (Gemini: deep cognitive reasoning and angle strategy)
   const contributionData = await analyzeContribution(
     postText,
     platform,
     analysis,
     userAdditionalContext,
-    provider,
-    planningModel
+    strategyProv,
+    strategyMod
   );
   const contribution = contributionData.result;
   if (typeof contribution.shouldSkip !== "boolean" ||
@@ -197,10 +218,20 @@ export async function runCommentIntelligencePipeline(
         critiqueSummary: contribution.skipReason || "Skipped due to low contribution value or topic hijacking risk.",
       },
       stepDebugLogs,
+      promptGuard: promptGuardInfo,
       metadata: {
         platform,
-        modelUsed: contributionData.debug.modelUsed || model,
-        providerUsed: contributionData.debug.providerUsed || provider,
+        pipelineMode: isCollaborative ? "collaborative" : providerOrMode,
+        providerRoles: {
+          safety: { provider: "groq", model: "meta-llama/llama-prompt-guard-2-86m" },
+          analysis: { provider: analysisProv, model: analysisMod },
+          strategy: { provider: strategyProv, model: strategyMod },
+          generation: { provider: generationProv, model: generationMod },
+          editor: { provider: editorProv, model: editorMod },
+          critic: { provider: criticProv, model: criticMod },
+        },
+        modelUsed: strategyMod,
+        providerUsed: isCollaborative ? "collaborative" : providerOrMode,
         criticModelUsed: undefined,
         criticProviderUsed: undefined,
         executionTimeMs: Date.now() - startTime,
@@ -208,42 +239,23 @@ export async function runCommentIntelligencePipeline(
     };
   }
 
-  // 3. Generate Candidate
+  // 3. Generate Candidate Comments (OpenRouter: creative human-sounding draft candidates)
+  // With Groq handling editorial scoring and ranking of the generated drafts
   let generationData = await generateCommentCandidate(
     postText,
     platform,
     analysis,
     contribution,
-    provider,
-    model,
-    userAdditionalContext
+    generationProv,
+    generationMod,
+    userAdditionalContext,
+    editorProv,
+    editorMod
   );
   let generation = generationData.result;
   stepDebugLogs.push(generationData.debug);
 
-  // If the candidate generator's built-in editor score is >= 8, it meets quality threshold
-  if (typeof generation.editorScore === "number" && generation.editorScore >= 8) {
-    const critic = editorReview(generation);
-    return {
-      status: critic.verdict,
-      comment: critic.verdict === "PASS" ? generation.comment : undefined,
-      analysis,
-      contribution,
-      critic,
-      stepDebugLogs,
-      metadata: {
-        platform,
-        modelUsed: generationData.debug.modelUsed || model,
-        providerUsed: generationData.debug.providerUsed || provider,
-        criticModelUsed: generation.editorModelUsed || model,
-        criticProviderUsed: provider,
-        editorScore: generation.editorScore,
-        executionTimeMs: Date.now() - startTime,
-      },
-    };
-  }
-
-  // 4. Quality Critic & Anti-Slop Audit
+  // 4. Quality Critic & Adversarial Anti-Slop Audit (Gemini: strict 15-check evaluation)
   let criticData = await evaluateCommentQuality(
     postText,
     platform,
@@ -257,7 +269,7 @@ export async function runCommentIntelligencePipeline(
   let critic = criticData.result;
   stepDebugLogs.push(criticData.debug);
 
-  // Retry loop if critic demands REGENERATE (up to 1 retry)
+  // Retry loop if critic demands REGENERATE (up to 1 retry by OpenRouter with Gemini's critique)
   if (critic.verdict === "REGENERATE") {
     generationData = await generateCommentCandidate(
       postText,
@@ -267,9 +279,11 @@ export async function runCommentIntelligencePipeline(
         ...contribution,
         angleExplanation: `${contribution.angleExplanation}\n\nCRITIC FEEDBACK TO FIX IN THIS RETRY:\nSummary: ${critic.critiqueSummary}\nIssues to resolve: ${critic.reasons.join("; ")}`,
       },
-      provider,
-      model,
-      userAdditionalContext
+      generationProv,
+      generationMod,
+      userAdditionalContext,
+      editorProv,
+      editorMod
     );
     generation = generationData.result;
     stepDebugLogs.push({
@@ -305,10 +319,20 @@ export async function runCommentIntelligencePipeline(
     contribution,
     critic,
     stepDebugLogs,
+    promptGuard: promptGuardInfo,
     metadata: {
       platform,
-      modelUsed: generationData.debug.modelUsed || model,
-      providerUsed: generationData.debug.providerUsed || provider,
+      pipelineMode: isCollaborative ? "collaborative" : providerOrMode,
+      providerRoles: {
+        safety: { provider: "groq", model: "meta-llama/llama-prompt-guard-2-86m" },
+        analysis: { provider: analysisProv, model: analysisMod },
+        strategy: { provider: strategyProv, model: strategyMod },
+        generation: { provider: generationProv, model: generationMod },
+        editor: { provider: editorProv, model: editorMod },
+        critic: { provider: criticProv, model: criticMod },
+      },
+      modelUsed: `${generationProv}/${generationMod}`,
+      providerUsed: isCollaborative ? "collaborative" : providerOrMode,
       criticModelUsed: criticData.debug.modelUsed || criticMod,
       criticProviderUsed: criticData.debug.providerUsed || criticProv,
       editorScore: generation.editorScore,

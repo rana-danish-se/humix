@@ -15,7 +15,7 @@ export async function evaluateCommentQuality(
   analysis: PostAnalysisResult,
   contribution: ContributionResult,
   provider: LLMProvider = "gemini",
-  model: string = "gemini-3.8-flash",
+  model: string = "gemini-3.7-flash",
   userAdditionalContext?: string
 ): Promise<{ result: QualityCriticResult; debug: LLMStepDebug }> {
   const startTime = Date.now();

@@ -3,8 +3,8 @@ import { callModel, LLMProvider, PostAnalysisResult, LLMStepDebug } from "@/lib/
 export async function analyzePost(
   postText: string,
   platform: string,
-  provider: LLMProvider = "gemini",
-  model: string = "gemini-3.8-flash"
+  provider: LLMProvider = "groq",
+  model: string = "openai/gpt-oss-120b"
 ): Promise<{ result: PostAnalysisResult; debug: LLMStepDebug }> {
   const startTime = Date.now();
 

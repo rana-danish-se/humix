@@ -14,8 +14,8 @@ export default function PostGeneratorForm() {
   const [postText, setPostText] = useState<string>("");
   const [platform, setPlatform] = useState<PlatformType>("LinkedIn");
   const [context, setContext] = useState<string>("");
-  const [provider, setProvider] = useState<"gemini" | "openrouter">("gemini");
-  const [model, setModel] = useState<string>("gemini-3.8-flash");
+  const [provider, setProvider] = useState<"collaborative" | "groq" | "gemini" | "openrouter">("collaborative");
+  const [model, setModel] = useState<string>("mesh-tri-provider");
 
   const [loading, setLoading] = useState<boolean>(false);
   const [result, setResult] = useState<PipelineResult | null>(null);
@@ -132,7 +132,7 @@ export default function PostGeneratorForm() {
         </div>
 
         {/* Provider selector & Debugger toggle */}
-        <div className="flex items-center space-x-3 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
           <label className="flex items-center space-x-1.5 cursor-pointer select-none bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 font-medium text-slate-700">
             <input
               type="checkbox"
@@ -146,35 +146,53 @@ export default function PostGeneratorForm() {
           <select
             value={provider}
             onChange={(e) => {
-              const p = e.target.value as "gemini" | "openrouter";
+              const p = e.target.value as "collaborative" | "groq" | "gemini" | "openrouter";
               setProvider(p);
-              setModel(p === "gemini" ? "gemini-3.8-flash" : "google/gemma-4-31b-it:free");
+              if (p === "collaborative") setModel("mesh-tri-provider");
+              else if (p === "groq") setModel("openai/gpt-oss-120b");
+              else if (p === "gemini") setModel("gemini-3.7-flash");
+              else setModel("nvidia/nemotron-3-ultra-550b-a55b:free");
             }}
-            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-medium cursor-pointer"
+            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-semibold cursor-pointer shadow-sm"
           >
-            <option value="gemini">Google Gemini (Recommended & Fast)</option>
-            <option value="openrouter">OpenRouter (Multi-Model)</option>
+            <option value="collaborative">🤝 Tri-Provider Mesh (Collaborative · Recommended)</option>
+            <option value="groq">⚡ Groq (Ultra-Fast LPU Inference)</option>
+            <option value="gemini">🧠 Google Gemini (Deep Reasoning)</option>
+            <option value="openrouter">🔷 OpenRouter (High-Capacity Free Models)</option>
           </select>
 
           <select
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-medium cursor-pointer"
+            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-medium cursor-pointer shadow-sm"
           >
-            {provider === "gemini" ? (
+            {provider === "collaborative" ? (
               <>
-                <option value="gemini-3.8-flash">🎯 Gemini 3.8 Flash (Free · Best)</option>
-                <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash Lite (Free · Fastest)</option>
-                <option value="gemini-3.8-flash">🔷 Gemini 3.8 Flash (Free · Stable)</option>
-                <option value="gemini-3.1-pro-preview">🧠 Gemini 3.1 Pro (Free · Reasoning)</option>
+                <option value="mesh-tri-provider">⭐ Balanced Mesh (Groq 120B + Gemini 3.7 + Nemotron 550B)</option>
+                <option value="mesh-fast-agent">⚡ Fast Mesh (Groq Qwen 27B + Gemini 3.5 Lite + Nemotron 120B)</option>
+                <option value="mesh-creative">🎨 Creative Mesh (Groq 120B + Gemini 3.7 + Space Bunny / Laguna)</option>
+              </>
+            ) : provider === "groq" ? (
+              <>
+                <option value="openai/gpt-oss-120b">⭐ GPT-OSS 120B (1K req/day · Reasoning & Coding)</option>
+                <option value="openai/gpt-oss-20b">⚡ GPT-OSS 20B (Fast Coding/General)</option>
+                <option value="qwen/qwen3.8-27b">🧠 Qwen 3.8 27B (Coding + Multimodal)</option>
+              </>
+            ) : provider === "gemini" ? (
+              <>
+                <option value="gemini-3.7-flash">⭐ Gemini 3.7 Flash (Free · Coding & Agents)</option>
+                <option value="gemini-3.5-flash">🎯 Gemini 3.5 Flash (Free · General-Purpose)</option>
+                <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite (Free · Fastest)</option>
+                <option value="gemini-3.1-pro-preview">🧠 Gemini 3.1 Pro (Free · Deep Reasoning)</option>
               </>
             ) : (
               <>
-                <option value="google/gemma-4-31b-it:free">🔷 Gemma 4 31B (Free · Best)</option>
-                <option value="nvidia/nemotron-3-ultra-550b-a55b:free">🧠 Nemotron Ultra 550B (Free · Huge)</option>
-                <option value="nvidia/nemotron-3-super-120b-a12b:free">⚡ Nemotron Super 120B (Free · Fast)</option>
-                <option value="google/gemma-4-26b-a4b-it:free">🔷 Gemma 4 26B MoE (Free · Google)</option>
-                <option value="qwen/qwen3.8-27b:free">⚡ Qwen3 8B 27B (Free · Lightweight)</option>
+                <option value="nvidia/nemotron-3-ultra-550b-a55b:free">⭐ Nemotron 3 Ultra 550B (1M Context · Free)</option>
+                <option value="nvidia/nemotron-3-super-120b-a12b:free">⚡ Nemotron 3 Super 120B (Free · Fast)</option>
+                <option value="poolside/laguna-s-2.1:free">🏖️ Poolside Laguna S 2.1 (Free · Coding Agent)</option>
+                <option value="stealth/space-bunny-alpha">🐰 Space Bunny Alpha (1M Context · Free)</option>
+                <option value="cohere/north-mini-code:free">💻 Cohere North Mini Code (Free)</option>
+                <option value="dots-studio/dots-3-note-preview:free">📝 Dots3-Note Preview (Free)</option>
               </>
             )}
           </select>
@@ -187,6 +205,49 @@ export default function PostGeneratorForm() {
             onSubmit={handleSubmit}
             className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200/90 shadow-xl shadow-slate-200/50 space-y-6"
           >
+            {/* Collaborative Multi-Provider Mesh Architecture Card */}
+            {provider === "collaborative" && (
+              <div className="p-4 rounded-xl border border-indigo-200/90 bg-gradient-to-r from-indigo-50/70 via-purple-50/50 to-blue-50/70 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-base">🤝</span>
+                    <span className="font-bold text-xs uppercase tracking-wider text-indigo-950">
+                      Tri-Provider Multi-Agent Assembly Pipeline Active
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-300">
+                    ⚡ Zero Single-Provider Dependency
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-xs">
+                  <div className="p-2.5 rounded-lg bg-white/80 border border-amber-200/80 shadow-xs">
+                    <div className="font-bold text-amber-900 flex items-center space-x-1">
+                      <span>⚡ Stage 1: Groq</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      Prompt Guard (86M) & Semantic Post Analysis (GPT-OSS 120B / Qwen 27B)
+                    </p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-white/80 border border-blue-200/80 shadow-xs">
+                    <div className="font-bold text-blue-900 flex items-center space-x-1">
+                      <span>🧠 Stage 2: Gemini</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      Relevance Discovery & Angle Strategy + Final Anti-Slop Audit (Gemini 3.7 Flash)
+                    </p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-white/80 border border-purple-200/80 shadow-xs">
+                    <div className="font-bold text-purple-900 flex items-center space-x-1">
+                      <span>🔷 Stage 3: OpenRouter</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      Multi-Candidate Creative Generation (Nemotron Ultra 550B / Space Bunny)
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Platform Selection Buttons */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
@@ -338,7 +399,7 @@ export default function PostGeneratorForm() {
             <div className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200/90 shadow-xl shadow-slate-200/50 space-y-6">
               {/* Decision Badge Banner */}
               <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
-                <div className="flex items-center space-x-3">
+                <div className="flex flex-wrap items-center gap-2">
                   {result.status === "PASS" ? (
                     <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center space-x-1.5">
                       <span>✅</span>
@@ -355,20 +416,33 @@ export default function PostGeneratorForm() {
                       <span>DECISION: REGENERATE</span>
                     </span>
                   )}
+                  {result.promptGuard && (
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold border flex items-center space-x-1 ${
+                      result.promptGuard.flagged
+                        ? "bg-rose-100 text-rose-800 border-rose-300"
+                        : "bg-emerald-100 text-emerald-800 border-emerald-300"
+                    }`}>
+                      <span>{result.promptGuard.flagged ? "🚨" : "🛡️"}</span>
+                      <span>
+                        Prompt Guard: {result.promptGuard.flagged ? "Flagged Injection" : "Clean"} ({(result.promptGuard.score * 100).toFixed(1)}%)
+                      </span>
+                    </span>
+                  )}
+                  {result.metadata.pipelineMode === "collaborative" && (
+                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-300 flex items-center space-x-1">
+                      <span>🤝</span>
+                      <span>Co-Authored by Groq + Gemini + OpenRouter</span>
+                    </span>
+                  )}
                   <span className="text-xs text-slate-400">
                     Total Time: {result.metadata.executionTimeMs}ms
                   </span>
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs text-slate-500 font-mono">
                     Writer: {result.metadata.modelUsed}
                   </span>
                   {result.metadata.editorScore !== undefined && (
                     <span className="text-xs text-slate-500">
-                      Editor estimate: {result.metadata.editorScore}/10
-                    </span>
-                  )}
-                  {result.metadata.criticModelUsed && (
-                    <span className="text-xs text-slate-500">
-                      Editor: {result.metadata.criticModelUsed}
+                      Editor Score: {result.metadata.editorScore}/10
                     </span>
                   )}
                 </div>
@@ -482,10 +556,22 @@ export default function PostGeneratorForm() {
                             onClick={() => setExpandedStep(isExpanded ? null : step.stepIndex)}
                             className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-800/50 transition-colors cursor-pointer"
                           >
-                            <div className="flex items-center space-x-3">
+                            <div className="flex flex-wrap items-center gap-2">
                               <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">
                                 Step {step.stepIndex}
                               </span>
+                              {step.providerUsed && (
+                                <span className={`font-mono text-[10px] font-bold px-2 py-0.5 rounded border ${
+                                  step.providerUsed === "groq"
+                                    ? "bg-amber-950/80 text-amber-300 border-amber-800"
+                                    : step.providerUsed === "gemini"
+                                    ? "bg-sky-950/80 text-sky-300 border-sky-800"
+                                    : "bg-purple-950/80 text-purple-300 border-purple-800"
+                                }`}>
+                                  {step.providerUsed === "groq" ? "⚡ GROQ" : step.providerUsed === "gemini" ? "🧠 GEMINI" : "🔷 OPENROUTER"}
+                                  {step.modelUsed ? ` : ${step.modelUsed}` : ""}
+                                </span>
+                              )}
                               <div>
                                 <span className="font-semibold text-xs text-slate-100">
                                   {step.stepName}

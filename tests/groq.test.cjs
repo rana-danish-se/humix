@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 const assert = require("node:assert/strict");
 
-const source = fs.readFileSync("lib/llm/openrouter.ts", "utf8");
+const source = fs.readFileSync("lib/llm/groq.ts", "utf8");
 const js = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
@@ -12,23 +12,25 @@ let payload;
 vm.runInNewContext(js, {
   exports: moduleExports,
   require: () => ({}),
-  process: { env: { OPENROUTER_API_KEY: "test-key" } },
+  process: { env: { GROQ_API_KEY: "test-groq-key" } },
   AbortSignal,
   console,
   fetch: async (_url, options) => {
     payload = JSON.parse(options.body);
     return {
       ok: true,
-      json: async () => ({ model: "anthropic/claude-sonnet-4.6", choices: [{ message: { content: '{"comments":[]}' } }] }),
+      json: async () => ({ model: "openai/gpt-oss-120b", choices: [{ message: { content: '{"status":"ok"}' } }] }),
     };
   },
 });
 
-moduleExports.callOpenRouter({ systemPrompt: "x", userPrompt: "y", maxTokens: 450, responseFormat: "json" }, "anthropic/claude-sonnet-4.6")
-  .then(() => {
-    assert.equal(payload.max_tokens, 450);
-    assert.equal(payload.models[0], "nvidia/nemotron-3-super-120b-a12b:free");
-    console.log("OpenRouter output limit and fallback passed.");
+moduleExports.callGroq({ systemPrompt: "test", userPrompt: "hello", responseFormat: "json" })
+  .then((res) => {
+    assert.equal(payload.model, "openai/gpt-oss-120b");
+    assert.equal(payload.response_format.type, "json_object");
+    assert.equal(res.parsedJson.status, "ok");
+    assert.equal(res.providerUsed, "groq");
+    console.log("Groq unit test passed.");
   })
   .catch((error) => {
     console.error(error);

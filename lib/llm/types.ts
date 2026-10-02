@@ -1,4 +1,5 @@
-export type LLMProvider = "openrouter" | "gemini";
+export type LLMProvider = "groq" | "gemini" | "openrouter";
+export type PipelineMode = "collaborative" | "groq" | "gemini" | "openrouter";
 
 export interface LLMMessage {
   role: "system" | "user" | "assistant";
@@ -15,6 +16,7 @@ export interface LLMRequest {
 
 export interface LLMResponse {
   text: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   parsedJson?: any;
   providerUsed: LLMProvider;
   modelUsed: string;
@@ -126,6 +128,7 @@ export interface LLMStepDebug {
   systemPrompt: string;
   userPrompt: string;
   rawResponseText: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   parsedOutput: any;
   executionTimeMs: number;
   providerUsed?: LLMProvider;
@@ -139,10 +142,24 @@ export interface PipelineResult {
   contribution: ContributionResult;
   critic: QualityCriticResult;
   stepDebugLogs: LLMStepDebug[];
+  promptGuard?: {
+    isAttack: boolean;
+    score: number;
+    flagged: boolean;
+  };
   metadata: {
     platform: PlatformType;
+    pipelineMode?: PipelineMode;
+    providerRoles?: {
+      safety?: { provider: LLMProvider; model: string };
+      analysis: { provider: LLMProvider; model: string };
+      strategy: { provider: LLMProvider; model: string };
+      generation: { provider: LLMProvider; model: string };
+      editor?: { provider: LLMProvider; model: string };
+      critic: { provider: LLMProvider; model: string };
+    };
     modelUsed: string;
-    providerUsed: LLMProvider;
+    providerUsed: LLMProvider | "collaborative";
     criticModelUsed?: string;
     criticProviderUsed?: LLMProvider;
     editorScore?: number;

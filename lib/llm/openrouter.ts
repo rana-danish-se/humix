@@ -2,22 +2,21 @@ import { LLMHttpError, LLMRequest, LLMResponse } from "./types";
 
 export async function callOpenRouter(
   request: LLMRequest,
-  model: string = "google/gemma-4-31b-it:free"
+  model: string = "nvidia/nemotron-3-ultra-550b-a55b:free"
 ): Promise<LLMResponse> {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("OPENROUTER_API_KEY environment variable is not set");
   }
 
-  const modelSlug = model && model.trim() ? model.trim() : "google/gemma-4-31b-it:free";
+  const modelSlug = model && model.trim() ? model.trim() : "nvidia/nemotron-3-ultra-550b-a55b:free";
   const fallbackModels = [
-    "google/gemma-4-31b-it:free",
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
-    "google/gemma-4-26b-a4b-it:free",
-  ].filter((candidate) => candidate !== modelSlug);
+    "poolside/laguna-s-2.1:free",
+    "cohere/north-mini-code:free",
+  ].filter((candidate) => candidate !== modelSlug).slice(0, 3);
 
-  const payload: any = {
+  const payload: Record<string, unknown> = {
     model: modelSlug,
     models: fallbackModels,
     messages: [
@@ -63,7 +62,7 @@ export async function callOpenRouter(
   const data = await response.json();
   const rawText = data.choices?.[0]?.message?.content || "";
 
-  let parsedJson: any = undefined;
+  let parsedJson: unknown = undefined;
   if (request.responseFormat === "json") {
     try {
       const cleaned = rawText.replace(/```(?:json)?\n?|\n?```/g, "").trim();

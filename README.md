@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Humix - Multi-Provider Collaborative Comment Intelligence
 
-## Getting Started
+Humix generates human-quality, authentic social media comments (LinkedIn, Reddit, Facebook) by orchestrating a **Tri-Provider Assembly Mesh** where **no comment is generated single-handedly by any single provider**.
 
-First, run the development server:
+## System Architecture: Tri-Provider Division of Labor
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+   Raw Post + Context
+           │
+           ▼
+┌─────────────────────────────────────────────────────────────┐
+│ ⚡ STAGE 0: GROQ SECURITY & INJECTION GUARD                 │
+│ Model: meta-llama/llama-prompt-guard-2-86m (14.4K req/day)  │
+│ Checks for prompt injection, jailbreaks, and adversarial    │
+│ system prompt exfiltration attempts in under 300ms.         │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│ ⚡ STAGE 1: GROQ SEMANTIC & FACTUAL POST ANALYSIS           │
+│ Model: openai/gpt-oss-120b (1K req/day, 200K tokens/day)    │
+│ Extracts core idea, subject, author intention, tone, claims,│
+│ and implicit ideas at LPU speed (~800ms).                   │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 🧠 STAGE 2: GEMINI STRATEGIC RELEVANCE & ANGLE DISCOVERY    │
+│ Model: gemini-3.7-flash (Fallback: gemini-3.5-flash-lite)   │
+│ Applies brutal filter (skips lifestyle/promo posts), shields │
+│ against topic hijacking, and selects the single best angle. │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 🔷 STAGE 3: OPENROUTER MULTI-CANDIDATE CREATIVE DRAFTING     │
+│ Model: nvidia/nemotron-3-ultra-550b-a55b:free (1M context)  │
+│ Synthesizes 4 distinct, grounded, human-like candidate      │
+│ replies tailored to platform constraints (LinkedIn/Reddit). │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│ ⚡ STAGE 4A: GROQ EDITORIAL RANKING & CLICHÉ FILTERING      │
+│ Model: openai/gpt-oss-120b                                  │
+│ Screens candidates against banned tropes and scores         │
+│ conversational authenticity.                                │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 🧠 STAGE 4B: GEMINI ADVERSARIAL QUALITY CRITIC & AUDIT      │
+│ Model: gemini-3.7-flash (Fallback: gemini-3.5-flash-lite)   │
+│ Audits against 15 strict criteria (anti-slop, summary-free, │
+│ natural tone, no hallucinations). Verdict: PASS or REGEN.   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Supported Providers & Quota Distribution
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Provider | Model Assigned | Specific Role in Assembly | Quota Benefit |
+|---|---|---|---|
+| **Groq** | `meta-llama/llama-prompt-guard-2-86m` | Stage 0: Security & Injection Detection | 14,400 req/day free |
+| **Groq** | `openai/gpt-oss-120b` (or `qwen/qwen3.8-27b`) | Stage 1: Fast Semantic Analysis & Stage 4A: Editorial Scoring | 1,000 req/day, LPU speed |
+| **Google Gemini** | `gemini-3.7-flash` / `gemini-3.5-flash-lite` | Stage 2: Relevance Discovery & Stage 4B: Quality Critic Audit | Deep reasoning & context |
+| **OpenRouter** | `nvidia/nemotron-3-ultra-550b-a55b:free` | Stage 3: Multi-Candidate Drafting | 1M Context, creative open weights |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Setup & Verification
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Provide your API keys in `.env.local`:
+   ```bash
+   GROQ_API_KEY=gsk_...
+   GEMINI_API_KEY=...
+   OPENROUTER_API_KEY=sk-or-v1-...
+   ```
+2. Run test suite:
+   ```bash
+   npm run test:comments
+   ```
+3. Run the development server:
+   ```bash
+   npm run dev
+   ```

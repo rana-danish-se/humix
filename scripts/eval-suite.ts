@@ -47,8 +47,7 @@ async function runEvaluationSuite() {
         tc.postText,
         tc.platform,
         undefined,
-        "gemini",
-        "gemini-flash-lite-latest"
+        "collaborative"
       );
 
       const durationMs = Date.now() - startTime;
@@ -93,8 +92,9 @@ async function runEvaluationSuite() {
         console.log(`   Reasons: ${failureReasons.join(" | ")}`);
         failedTests++;
       }
-    } catch (err: any) {
-      console.error(`💥 ERROR executing test case:`, err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`💥 ERROR executing test case:`, msg);
       failedTests++;
     }
 

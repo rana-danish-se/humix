@@ -7,7 +7,7 @@ export async function analyzeContribution(
   analysis: PostAnalysisResult,
   userAdditionalContext?: string,
   provider: LLMProvider = "gemini",
-  model: string = "gemini-3.8-flash"
+  model: string = "gemini-3.7-flash"
 ): Promise<{ result: ContributionResult; debug: LLMStepDebug }> {
   const startTime = Date.now();
   const techTerms = /\b(?:AI|automation|software|coding?|API|algorithms?|machine learning|SaaS|tech(?:nology)?)\b/i;

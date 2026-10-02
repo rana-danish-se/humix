@@ -31,9 +31,21 @@ export async function POST(request: Request) {
 
     const platformName: PlatformType =
       platform === "Reddit" || platform === "Facebook" ? platform : "LinkedIn";
-    const selectedProvider: LLMProvider = provider === "openrouter" ? "openrouter" : "gemini";
-    const selectedModel: string =
-      model || (selectedProvider === "gemini" ? "gemini-3.8-flash" : "google/gemma-4-31b-it:free");
+
+    const selectedProvider: LLMProvider | "collaborative" =
+      provider === "groq" || provider === "gemini" || provider === "openrouter"
+        ? provider
+        : "collaborative";
+
+    const selectedModel: string | undefined =
+      model ||
+      (selectedProvider === "collaborative"
+        ? undefined
+        : selectedProvider === "groq"
+        ? "openai/gpt-oss-120b"
+        : selectedProvider === "gemini"
+        ? "gemini-3.7-flash"
+        : "nvidia/nemotron-3-ultra-550b-a55b:free");
 
     const result = await runCommentIntelligencePipeline(
       post.trim(),
