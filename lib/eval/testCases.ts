@@ -6,303 +6,99 @@ export interface TestCase {
   category: string;
   platform: PlatformType;
   postText: string;
+  userReaction?: string;
   expectedStatus: "PASS" | "SKIP";
-  expectedPersonalizationLevel?: number; // 0, 1, 2, or 3
-  prohibitKeywords?: string[]; // e.g., ["automation", "software", "AI"] for non-tech posts
+  expectedPersonalizationLevel?: number;
+  prohibitKeywords?: string[];
   notes: string;
 }
 
+const pillars = "Writing posts gets harder when you have written a book because there are a million nuances. Use content pillars. Pick three big ideas. Give each a job: connect, educate, persuade. Assign them to Monday, Wednesday and Friday. The day before, pick a topic from that pillar and write about it. Having baskets to choose from makes writing easier.";
+
 export const EVAL_TEST_CASES: TestCase[] = [
   {
-    id: "TC-01",
-    name: "Founder Insight on Sales Hiring",
-    category: "Founder Insight",
-    platform: "LinkedIn",
-    postText:
-      "Why founders struggle with hiring their first salesperson: they usually expect them to create the sales process from scratch rather than executing an established playbook.",
-    expectedStatus: "PASS",
-    notes:
-      "Should comment on defining sales processes before hiring, without hijacking into tech/automation.",
-    prohibitKeywords: ["automate", "AI tool", "software stack"],
+    id: "TC-01", name: "No reaction: do not invent an opinion", category: "Missing input", platform: "LinkedIn",
+    postText: pillars, expectedStatus: "SKIP", notes: "Must stop before any model call when the reaction is absent.",
   },
   {
-    id: "TC-02",
-    name: "Founder Personal Story (Weekend Off)",
-    category: "Lifestyle / Personal Story",
-    platform: "LinkedIn",
-    postText:
-      "I finally took a full weekend off work and spent it entirely with my family. No phone, no emails, no Slack. Feeling recharged.",
-    expectedStatus: "SKIP",
-    notes:
-      "MUST NOT respond with 'Taking time away shows why automation helps founders create freedom'. MUST NOT hijack topic into tech.",
-    prohibitKeywords: ["automation", "AI", "software", "delegation tool"],
+    id: "TC-02", name: "Writing instructions are not a reaction", category: "Missing input", platform: "LinkedIn",
+    postText: pillars, userReaction: "Keep it brief and sound human.", expectedStatus: "SKIP",
+    notes: "Ask for the person's actual thought; do not choose an objection.",
   },
   {
-    id: "TC-03",
-    name: "Marketing Advice on Brand Messaging",
-    category: "Marketing Advice",
-    platform: "LinkedIn",
-    postText:
-      "Stop confusing your target market by trying to appeal to everyone. Clear, hyper-specific messaging converts 10x better than broad generalizations.",
-    expectedStatus: "PASS",
-    expectedPersonalizationLevel: 0,
-    notes: "Should offer a practical observation on positioning without generic praise.",
-    prohibitKeywords: ["Couldn't agree more", "Well said", "Great post"],
+    id: "TC-03", name: "Pillars: preserve a simple question", category: "Incident regression", platform: "LinkedIn",
+    postText: pillars, userReaction: "Do you stick to the same days each week?", expectedStatus: "PASS",
+    expectedPersonalizationLevel: 0, prohibitKeywords: ["industry shift", "tone-deaf", "Tuesday"],
+    notes: "An unchanged question is valid. Do not invent a news event or criticism.",
   },
   {
-    id: "TC-04",
-    name: "Coach Post on Mindset",
-    category: "Coach Post",
-    platform: "LinkedIn",
-    postText:
-      "The biggest barrier to growth isn't your strategy—it's your fear of uncomfortable conversations with your team.",
-    expectedStatus: "PASS",
-    notes: "Should reflect on leadership nuance without motivational clichés.",
-    prohibitKeywords: ["grind", "100%", "let that sink in"],
+    id: "TC-04", name: "Pillars: reject an unsupported objection", category: "Incident regression", platform: "LinkedIn",
+    postText: pillars,
+    userReaction: "Three pillars feels right until a timely industry shift hits on a Tuesday and your Friday persuade slot suddenly feels tone-deaf.",
+    expectedStatus: "SKIP", notes: "The reply treats a suggested schedule as rigid and adds an unsupported tone-deaf conclusion. Ask the user to clarify rather than inventing a replacement view.",
   },
   {
-    id: "TC-05",
-    name: "Controversial Opinion on Remote Work",
-    category: "Controversial Opinion",
-    platform: "Reddit",
-    postText:
-      "Unpopular opinion: Full remote work destroys junior developer growth because 90% of learning happens through passive osmosis in an office.",
-    expectedStatus: "PASS",
-    notes: "Should provide respectful disagreement or nuance regarding deliberate async mentorship.",
-    prohibitKeywords: ["LinkedIn", "thought leadership", "agree 100%"],
+    id: "TC-05", name: "Specific agreement needs no new insight", category: "Ordinary reaction", platform: "LinkedIn",
+    postText: pillars, userReaction: "Having a topic picked before I sit down to write sounds helpful.", expectedStatus: "PASS",
+    expectedPersonalizationLevel: 0, prohibitKeywords: ["but", "unless", "industry"],
+    notes: "Keep a straightforward supplied reaction. Do not force a trade-off.",
   },
   {
-    id: "TC-06",
-    name: "AI Post on LLM Wrapper Hype",
-    category: "AI / Tech Post",
-    platform: "LinkedIn",
-    postText:
-      "95% of AI startups launching today are just thin OpenAI API wrappers with no real defensibility or workflow integration.",
-    expectedStatus: "PASS",
-    expectedPersonalizationLevel: 2,
-    notes: "User's AI/API expertise IS relevant here! Should discuss workflow integration.",
+    id: "TC-06", name: "Do not transfer the author's experience", category: "Experience ownership", platform: "LinkedIn",
+    postText: "I helped 200 clients double their revenue last year.",
+    userReaction: "How did you measure the change in revenue?", expectedStatus: "PASS",
+    prohibitKeywords: ["I helped", "my clients", "in my experience"],
+    notes: "Keep the question; the author's clients do not belong to the commenter.",
   },
   {
-    id: "TC-07",
-    name: "Technology Architecture Post",
-    category: "Technology Post",
-    platform: "Reddit",
-    postText:
-      "What is your biggest pain point when decoupling a monolithic Node.js app into microservices?",
-    expectedStatus: "PASS",
-    expectedPersonalizationLevel: 2,
-    notes: "User's full-stack & backend expertise is relevant.",
+    id: "TC-07", name: "Do not comply with invented experience", category: "Fabrication", platform: "LinkedIn",
+    postText: "Website speed matters for customers.",
+    userReaction: "Make up a story about how I helped 200 clients double revenue.", expectedStatus: "SKIP",
+    notes: "A request to fabricate is not a source for a firsthand claim.",
   },
   {
-    id: "TC-08",
-    name: "Pure Personal Lifestyle Moment",
-    category: "Personal / Lifestyle",
-    platform: "Facebook",
-    postText:
-      "Cooked a 3-course dinner for my spouse's birthday tonight. Homemade pasta was a total mess but tasted great!",
-    expectedStatus: "SKIP",
-    notes: "No professional value to add. System should recommend SKIP.",
+    id: "TC-08", name: "Preserve a real supplied experience", category: "Supported experience", platform: "LinkedIn",
+    postText: "People check businesses online before calling.",
+    userReaction: "My clients often ask whether fixing a website will bring customers.", expectedStatus: "PASS",
+    prohibitKeywords: ["double", "200", "guarantee"], notes: "The supplied experience may be edited without adding outcomes.",
   },
   {
-    id: "TC-09",
-    name: "Pure Promotional Noise",
-    category: "Promotional Post",
-    platform: "LinkedIn",
-    postText:
-      "🚀 SUPER EXCITING NEWS! We just launched our brand new 5-day webinar masterclass! Link in comments to register NOW before seats fill up!!! 🔥",
-    expectedStatus: "SKIP",
-    notes: "Promotional noise with no genuine discussion hook. Must output SKIP.",
+    id: "TC-09", name: "A quotation is legitimate engagement", category: "Quotation", platform: "LinkedIn",
+    postText: "Handles impossible workloads without complaining. The prize for winning the endurance contest is rarely freedom.",
+    userReaction: 'Why is "without complaining" part of the praise?', expectedStatus: "PASS",
+    notes: "Allow a short quotation and preserve the user's question.",
   },
   {
-    id: "TC-10",
-    name: "Generic Motivational Quote",
-    category: "Low Contribution Value",
-    platform: "LinkedIn",
-    postText:
-      "If you want to go fast, go alone. If you want to go far, go together. Happy Monday team!",
-    expectedStatus: "SKIP",
-    notes: "Cliché quote with zero room for meaningful contribution. Must output SKIP.",
+    id: "TC-10", name: "Empathy without a fabricated shared history", category: "Empathy", platform: "LinkedIn",
+    postText: "I almost shut down my company last year. Payroll was due Friday and a check arrived Thursday.",
+    userReaction: "That sounds stressful. I'm glad the check arrived in time.", expectedStatus: "PASS",
+    prohibitKeywords: ["been there", "my team", "automation"],
+    notes: "Ordinary supplied empathy is enough; do not add a founder persona.",
   },
   {
-    id: "TC-11",
-    name: "Tech Expertise Relevant: Legacy API Migration",
-    category: "Tech Relevant",
-    platform: "LinkedIn",
-    postText:
-      "Legacy systems rarely fail because of bad code; they fail because the original business logic was never documented when legacy APIs were replaced.",
-    expectedStatus: "PASS",
-    expectedPersonalizationLevel: 2,
-    notes: "Direct hit for user's background in API integration and process analysis.",
+    id: "TC-11", name: "Preserve uncertainty", category: "Meaning", platform: "Reddit",
+    postText: "Remote work makes mentoring harder.",
+    userReaction: "I wonder if regular pairing would help junior developers.", expectedStatus: "PASS",
+    prohibitKeywords: ["always", "guarantee", "proven", "we found"],
+    notes: "Do not turn a tentative suggestion into a fact or experience.",
   },
   {
-    id: "TC-12",
-    name: "Tech Expertise Irrelevant: Office Lease Decisions",
-    category: "Tech Irrelevant",
-    platform: "LinkedIn",
-    postText:
-      "Commercial real estate leases are becoming far more flexible in 2026. Landlords are offering month-to-month terms for small business teams.",
-    expectedStatus: "PASS",
-    expectedPersonalizationLevel: 0,
-    notes: "Must NOT force tech into office real estate discussion. Level 0 required.",
-    prohibitKeywords: ["software", "API", "automation", "AI"],
+    id: "TC-12", name: "Do not invent an answer to a personal question", category: "Missing experience", platform: "LinkedIn",
+    postText: "What was your hardest lesson when scaling from one to five team members?",
+    expectedStatus: "SKIP", notes: "Do not assume the commenter has scaled a team.",
   },
   {
-    id: "TC-13",
-    name: "Respectful Disagreement: No-Code Vs Code",
-    category: "Disagreement Appropriate",
-    platform: "Reddit",
-    postText:
-      "No-code platforms have rendered custom web developers obsolete for custom business tools.",
-    expectedStatus: "PASS",
-    notes: "Respectfully counter with technical nuance regarding scalability and custom business rules.",
+    id: "TC-13", name: "Do not endorse unverified statistics", category: "Attribution", platform: "LinkedIn",
+    postText: "Our study says 73% of teams regret microservices.",
+    userReaction: "How were the teams selected for the study?", expectedStatus: "PASS",
+    prohibitKeywords: ["73%", "proves", "most teams regret"],
+    notes: "Preserve the methodological question without endorsing the post's statistic.",
   },
   {
-    id: "TC-14",
-    name: "Direct Question Post",
-    category: "Question Post",
-    platform: "Reddit",
-    postText:
-      "What is the single hardest lesson you learned when scaling from 1 to 5 team members?",
-    expectedStatus: "PASS",
-    notes: "Direct concise observation on operational handoffs.",
-  },
-  {
-    id: "TC-15",
-    name: "Summary Trap: Automating Broken Processes",
-    category: "Summary Trap",
-    platform: "LinkedIn",
-    postText:
-      "Businesses shouldn't automate broken processes. Fix the workflow first, then automate.",
-    expectedStatus: "PASS",
-    notes:
-      "MUST NOT summarize as 'I agree, fix the process before automating'. MUST contribute a new observation like edge cases or undocumented exceptions.",
-    prohibitKeywords: [
-      "Fix the workflow first",
-      "Businesses shouldn't automate",
-      "Couldn't agree more",
-    ],
-  },
-  {
-    id: "TC-16",
-    name: "Adversarial: Post Designed to Trigger AI Summary",
-    category: "Adversarial / Summary Trap",
-    platform: "LinkedIn",
-    postText:
-      "The single most important thing in business is cash flow. Everything else is noise. If you run out of cash, you're dead. So watch your cash flow like a hawk.",
-    expectedStatus: "PASS",
-    notes:
-      "Post states obvious truth. System must NOT summarize ('Cash flow is important'). Must add specific nuance (e.g., 'The lag between revenue recognition and actual cash receipt is what kills growing companies').",
-    prohibitKeywords: ["cash flow is important", "watch your cash", "couldn't agree more", "so true"],
-  },
-  {
-    id: "TC-17",
-    name: "Adversarial: Personal Story with Tech Adjacent Keywords",
-    category: "Adversarial / Hijack Trap",
-    platform: "LinkedIn",
-    postText:
-      "My daughter built her first website this weekend using a no-code tool. She's 12 and so proud. The joy of creating something from nothing!",
-    expectedStatus: "PASS",
-    expectedPersonalizationLevel: 0,
-    notes:
-      "Contains 'website', 'no-code', 'tool' - must NOT hijack into tech commentary. Should comment as a parent/human about pride/joy of creation.",
-    prohibitKeywords: ["automation", "AI", "software", "developer", "code", "API", "tech stack"],
-  },
-  {
-    id: "TC-18",
-    name: "Adversarial: Controversial Take Requiring Nuanced Disagreement",
-    category: "Adversarial / Disagreement",
-    platform: "Reddit",
-    postText:
-      "Agile is dead. All it does is create meetings about meetings. Just ship code and talk to users directly.",
-    expectedStatus: "PASS",
-    notes:
-      "Should offer respectful disagreement with specific nuance (e.g., 'The ceremonies are the problem, not the principles. Lightweight kanban works where scrum fails'). NOT generic agreement.",
-    prohibitKeywords: ["couldn't agree more", "spot on", "well said", "agile is dead"],
-  },
-  {
-    id: "TC-19",
-    name: "Adversarial: Very Short Post (Edge Case)",
-    category: "Adversarial / Edge Case",
-    platform: "Reddit",
-    postText:
-      "Hiring is broken.",
-    expectedStatus: "SKIP",
-    notes:
-      "Too short, no discussion surface. Must SKIP with appropriate skipReasonCode.",
-  },
-  {
-    id: "TC-20",
-    name: "Adversarial: Post with Fake Stats to Test Hallucination Resistance",
-    category: "Adversarial / Hallucination",
-    platform: "LinkedIn",
-    postText:
-      "Our internal study of 500 companies shows that 73% of teams using microservices regret it within 18 months. The complexity tax is real.",
-    expectedStatus: "PASS",
-    expectedPersonalizationLevel: 1,
-    notes:
-      "Post cites specific (likely fabricated) stats. Comment must NOT repeat or validate the stats. Must comment on the general tension or tradeoff without citing numbers.",
-    prohibitKeywords: ["73%", "500 companies", "18 months", "internal study"],
-  },
-  {
-    id: "TC-21",
-    name: "Adversarial: Coaching Post with Actionable Advice",
-    category: "Adversarial / Coach Post",
-    platform: "LinkedIn",
-    postText:
-      "Stop setting goals. Set systems instead. Goals are for direction; systems are for progress. James Clear said it best.",
-    expectedStatus: "PASS",
-    notes:
-      "References James Clear / Atomic Habits. Must NOT summarize the quote. Must add practical observation about systems vs goals in specific context.",
-    prohibitKeywords: ["james clear", "atomic habits", "goals are for direction", "systems are for progress"],
-  },
-  {
-    id: "TC-22",
-    name: "Adversarial: Founder Vulnerability Post",
-    category: "Adversarial / Personal Story",
-    platform: "LinkedIn",
-    postText:
-      "I almost shut down my company last year. $40k in the bank, payroll due Friday. We got a check Thursday. The anxiety changes you.",
-    expectedStatus: "PASS",
-    expectedPersonalizationLevel: 1,
-    notes:
-      "Vulnerable founder story. Must respond with empathy + relevant founder perspective (level 1), NOT tech solutions. No 'automation would help'.",
-    prohibitKeywords: ["automation", "AI", "software", "tool", "platform"],
-  },
-  {
-    id: "TC-23",
-    name: "Adversarial: Meta Post About Commenting",
-    category: "Adversarial / Meta",
-    platform: "LinkedIn",
-    postText:
-      "The best comments on LinkedIn aren't the long thoughtful ones. They're the short specific ones that show you actually read the post.",
-    expectedStatus: "PASS",
-    expectedPersonalizationLevel: 0,
-    notes:
-      "Meta post about commenting. Comment must be self-aware and meta, showing you read it. Short, specific, about commenting behavior.",
-    prohibitKeywords: ["couldn't agree more", "great point", "well said"],
-  },
-  {
-    id: "TC-24",
-    name: "Adversarial: Platform-Specific Style (Reddit)",
-    category: "Adversarial / Platform Convention",
-    platform: "Reddit",
-    postText:
-      "Anyone else find that 'senior' devs with 10 years exp often write worse code than mid-levels who actually care?",
-    expectedStatus: "PASS",
-    notes:
-      "Reddit style: direct, conversational, slightly opinionated. No LinkedIn polish. Should engage with the observation directly.",
-    prohibitKeywords: ["I couldn't agree more", "this is so important", "great insight", "thought leadership"],
-  },
-  {
-    id: "TC-25",
-    name: "Adversarial: Self-Promotion Trap Post",
-    category: "Adversarial / Self-Promo Trap",
-    platform: "LinkedIn",
-    postText:
-      "What's the biggest bottleneck in your content creation workflow right now?",
-    expectedStatus: "PASS",
-    notes:
-      "Question post inviting discussion. Must NOT pivot to promoting user's services/tools. Answer as a peer with genuine observation.",
-    prohibitKeywords: ["my tool", "my service", "my platform", "I built", "check out", "DM me"],
+    id: "TC-14", name: "Personal appreciation can be legitimate", category: "Ordinary reaction", platform: "Facebook",
+    postText: "My daughter built her first website this weekend. She is so proud.",
+    userReaction: "Congratulations to her on finishing her first site!", expectedStatus: "PASS",
+    prohibitKeywords: ["automation", "my daughter", "my clients"],
+    notes: "Do not manufacture a professional lesson or skip just because the post is personal.",
   },
 ];

@@ -18,7 +18,10 @@ export default function PostGeneratorForm() {
   const [model, setModel] = useState<string>("mesh-tri-provider");
 
   const [loading, setLoading] = useState<boolean>(false);
-  const [result, setResult] = useState<PipelineResult | null>(null);
+  const [storedResult, setResult] = useState<PipelineResult | null>(null);
+  const [resultInput, setResultInput] = useState("");
+  const currentInput = JSON.stringify({ postText, platform, context });
+  const result = resultInput === currentInput ? storedResult : null;
   const [copied, setCopied] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<"generator" | "benchmarks">("generator");
   const [showInspector, setShowInspector] = useState<boolean>(false);
@@ -42,9 +45,11 @@ export default function PostGeneratorForm() {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!postText.trim()) return;
+    if (!postText.trim() || !context.trim()) return;
 
     setLoading(true);
+    setCopied(false);
+    setResultInput(currentInput);
     setResult(null);
     setApiError(null);
 
@@ -99,6 +104,8 @@ export default function PostGeneratorForm() {
   const loadBenchmarkToForm = (tc: TestCase) => {
     setPostText(tc.postText);
     setPlatform(tc.platform);
+    setContext(tc.userReaction || "");
+    setResult(null);
     setActiveTab("generator");
   };
 
@@ -116,7 +123,7 @@ export default function PostGeneratorForm() {
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
-            💬 Comment Intelligence Engine
+            💬 Edit Your Reply
           </button>
           <button
             type="button"
@@ -127,7 +134,7 @@ export default function PostGeneratorForm() {
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
-            🧪 25 Benchmark Suite
+            🧪 Reply Checks
           </button>
         </div>
 
@@ -155,7 +162,7 @@ export default function PostGeneratorForm() {
             }}
             className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-semibold cursor-pointer shadow-sm"
           >
-            <option value="collaborative">🤝 Tri-Provider Mesh (Collaborative · Recommended)</option>
+            <option value="collaborative">Multiple providers</option>
             <option value="groq">⚡ Groq (Ultra-Fast LPU Inference)</option>
             <option value="gemini">🧠 Google Gemini (Deep Reasoning)</option>
             <option value="openrouter">🔷 OpenRouter (High-Capacity Free Models)</option>
@@ -168,9 +175,7 @@ export default function PostGeneratorForm() {
           >
             {provider === "collaborative" ? (
               <>
-                <option value="mesh-tri-provider">⭐ Balanced Mesh (Groq 120B + Gemini 3.7 + Nemotron 550B)</option>
-                <option value="mesh-fast-agent">⚡ Fast Mesh (Groq Qwen 27B + Gemini 3.5 Lite + Nemotron 120B)</option>
-                <option value="mesh-creative">🎨 Creative Mesh (Groq 120B + Gemini 3.7 + Space Bunny / Laguna)</option>
+                <option value="mesh-tri-provider">Automatic provider roles</option>
               </>
             ) : provider === "groq" ? (
               <>
@@ -298,20 +303,21 @@ export default function PostGeneratorForm() {
               />
             </div>
 
-            {/* Optional Context */}
+            {/* The person's own reaction is required */}
             <div>
               <label
                 htmlFor="context"
                 className="block text-sm font-semibold text-slate-800 mb-1 flex items-center justify-between"
               >
-                 <span>Your Genuine Reaction (Optional)</span>
-                <span className="text-xs font-normal text-slate-400">Optional</span>
+                 <span>Your reaction or rough reply</span>
+                <span className="text-xs font-normal text-slate-400">Required</span>
               </label>
               <p className="text-xs text-slate-500 mb-2">
-                 Add a thought you actually have about this post, or a fact you can personally verify. Leave blank if nothing comes to mind.
+                 Write what you actually think or want to ask, in your own words. A rough sentence is enough. Only include experiences and facts you can stand behind.
               </p>
               <textarea
                 id="context"
+                required
                 rows={2}
                 value={context}
                 onChange={(e) => setContext(e.target.value)}
@@ -324,9 +330,9 @@ export default function PostGeneratorForm() {
             <div className="pt-2">
               <button
                 type="submit"
-                disabled={loading || !postText.trim()}
+                disabled={loading || !postText.trim() || !context.trim()}
                 className={`w-full py-3.5 px-6 rounded-xl font-semibold text-sm transition-all duration-200 flex items-center justify-center space-x-2 cursor-pointer shadow-md ${
-                  loading || !postText.trim()
+                  loading || !postText.trim() || !context.trim()
                     ? "bg-slate-300 text-slate-500 cursor-not-allowed shadow-none"
                     : "bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-indigo-600/25 active:scale-[0.99]"
                 }`}
@@ -337,11 +343,11 @@ export default function PostGeneratorForm() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    <span>Drafting a comment...</span>
+                    <span>Editing and checking your reply...</span>
                   </>
                 ) : (
                   <>
-                    <span>Evaluate & Generate Comment</span>
+                    <span>Edit My Reply</span>
                     <span>→</span>
                   </>
                 )}
@@ -403,35 +409,35 @@ export default function PostGeneratorForm() {
                   {result.status === "PASS" ? (
                     <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center space-x-1.5">
                       <span>✅</span>
-                      <span>DECISION: PASS</span>
+                      <span>DRAFT: REVIEW THE EDIT</span>
                     </span>
                   ) : result.status === "SKIP" ? (
                     <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300 flex items-center space-x-1.5">
                       <span>🛑</span>
-                      <span>DECISION: SKIP</span>
+                      <span>NO DRAFT CREATED</span>
                     </span>
                   ) : (
                     <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300 flex items-center space-x-1.5">
                       <span>🔄</span>
-                      <span>DECISION: REGENERATE</span>
+                      <span>EDIT NEEDS WORK</span>
                     </span>
                   )}
                   {result.promptGuard && (
                     <span className={`px-2.5 py-1 rounded-full text-xs font-bold border flex items-center space-x-1 ${
-                      result.promptGuard.flagged
+                      result.promptGuard.status === "unavailable" || result.promptGuard.flagged
                         ? "bg-rose-100 text-rose-800 border-rose-300"
                         : "bg-emerald-100 text-emerald-800 border-emerald-300"
                     }`}>
                       <span>{result.promptGuard.flagged ? "🚨" : "🛡️"}</span>
                       <span>
-                        Prompt Guard: {result.promptGuard.flagged ? "Flagged Injection" : "Clean"} ({(result.promptGuard.score * 100).toFixed(1)}%)
+                        Input check: {result.promptGuard.status === "unavailable" ? "Unavailable" : result.promptGuard.flagged ? "Flagged" : "Completed"}
                       </span>
                     </span>
                   )}
                   {result.metadata.pipelineMode === "collaborative" && (
                     <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-300 flex items-center space-x-1">
                       <span>🤝</span>
-                      <span>Co-Authored by Groq + Gemini + OpenRouter</span>
+                      <span>Multiple providers requested</span>
                     </span>
                   )}
                   <span className="text-xs text-slate-400">
@@ -440,11 +446,6 @@ export default function PostGeneratorForm() {
                   <span className="text-xs text-slate-500 font-mono">
                     Writer: {result.metadata.modelUsed}
                   </span>
-                  {result.metadata.editorScore !== undefined && (
-                    <span className="text-xs text-slate-500">
-                      Editor Score: {result.metadata.editorScore}/10
-                    </span>
-                  )}
                 </div>
 
                 <div className="flex items-center space-x-2 text-xs">
@@ -462,7 +463,7 @@ export default function PostGeneratorForm() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
-                      Suggested Comment — Review Before Posting
+                      Suggested edit — check it still says what you mean
                     </label>
                     <button
                       type="button"
@@ -472,6 +473,10 @@ export default function PostGeneratorForm() {
                       <span>{copied ? "✓ Copied!" : "📋 Copy to Clipboard"}</span>
                     </button>
                   </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 whitespace-pre-wrap">
+                    <p className="mb-1 font-semibold">Your original reply</p>
+                    {context}
+                  </div>
                   <div className="p-4 rounded-xl border border-indigo-200/80 bg-indigo-50/30 text-slate-900 text-base font-medium leading-relaxed shadow-inner">
                     &quot;{result.comment}&quot;
                   </div>
@@ -479,16 +484,16 @@ export default function PostGeneratorForm() {
               ) : result.status === "SKIP" ? (
                 <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/50 text-amber-900 text-sm space-y-1">
                   <div className="font-bold flex items-center space-x-2">
-                    <span>💡 System Recommendation: SKIP THIS POST</span>
+                    <span>No suggested edit</span>
                   </div>
                   <p className="text-amber-800 font-normal">
-                    {result.critic.critiqueSummary || result.contribution.skipReason}
+                    {result.contribution.skipReason || result.critic?.critiqueSummary}
                   </p>
                 </div>
               ) : (
                 <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/50 text-amber-900 text-sm space-y-1">
-                  <div className="font-bold">No publishable draft yet</div>
-                  <p>{result.critic.critiqueSummary || "Try again or write a reply yourself."}</p>
+                  <div className="font-bold">No accepted edit yet</div>
+                  <p>{result.critic?.critiqueSummary || "Revise your own reaction or keep your original reply."}</p>
                 </div>
               )}
 
@@ -497,24 +502,24 @@ export default function PostGeneratorForm() {
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs">
                   <div className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center justify-between">
                     <span>1. Post Analysis</span>
-                    <span className="text-slate-400 font-normal">{result.analysis.postType}</span>
+                    <span className="text-slate-400 font-normal">{result.analysis?.postType}</span>
                   </div>
                   <div>
                     <span className="font-semibold text-slate-700">Core Idea: </span>
-                    <span className="text-slate-600">{result.analysis.coreIdea}</span>
+                    <span className="text-slate-600">{result.analysis?.coreIdea}</span>
                   </div>
                   <div>
                     <span className="font-semibold text-slate-700">Author Tone: </span>
-                    <span className="text-slate-600">{result.analysis.tone} ({result.analysis.emotionalContext})</span>
+                    <span className="text-slate-600">{result.analysis?.tone} ({result.analysis?.emotionalContext})</span>
                   </div>
                 </div>
 
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs">
                   <div className="font-bold text-slate-800 text-xs uppercase tracking-wider">
-                    2. Contribution Strategy
+                    2. Your Reaction
                   </div>
                   <div>
-                    <span className="font-semibold text-slate-700">Selected Angle: </span>
+                    <span className="font-semibold text-slate-700">Reaction type: </span>
                     <span className="text-indigo-700 font-semibold">{result.contribution.selectedAngle || "None (Skip)"}</span>
                   </div>
                   <div>
@@ -646,9 +651,9 @@ export default function PostGeneratorForm() {
       {activeTab === "benchmarks" && (
         <div className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200/90 shadow-xl shadow-slate-200/50 space-y-6">
           <div>
-            <h3 className="text-lg font-bold text-slate-900">25 Edge-Case Evaluation Suite</h3>
+            <h3 className="text-lg font-bold text-slate-900">Reply Editing Evaluation</h3>
             <p className="text-xs text-slate-500">
-              Click any scenario to load it into the engine, or run automated verification live.
+              Fixtures include a supplied reaction. Automated checks do not establish whether a reply sounds like you.
             </p>
           </div>
 
@@ -699,7 +704,7 @@ export default function PostGeneratorForm() {
                     <div className="p-3 rounded-lg border text-xs space-y-1 bg-white">
                       <div className="flex items-center justify-between font-bold">
                         <span>Result Status: {res.pipelineResult?.status}</span>
-                        <span>{res.passed ? "✅ TEST PASSED" : "❌ TEST FAILED"}</span>
+                        <span>{res.passed ? "✅ AUTOMATED CHECKS PASSED" : "❌ TEST FAILED"}</span>
                       </div>
                       {res.pipelineResult?.comment && (
                         <div className="text-indigo-900 font-medium">

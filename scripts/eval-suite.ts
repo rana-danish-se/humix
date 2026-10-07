@@ -1,3 +1,4 @@
+import { evaluateResult } from "../lib/eval/evaluateResult";
 import fs from "fs";
 import path from "path";
 import { EVAL_TEST_CASES } from "../lib/eval/testCases";
@@ -46,43 +47,16 @@ async function runEvaluationSuite() {
       const result = await runCommentIntelligencePipeline(
         tc.postText,
         tc.platform,
-        undefined,
+        tc.userReaction,
         "collaborative"
       );
 
       const durationMs = Date.now() - startTime;
       console.log(`Pipeline Status: ${result.status} (${durationMs}ms)`);
 
-      let tcPassed = true;
-      const failureReasons: string[] = [];
-
-      if (result.status !== tc.expectedStatus) {
-        tcPassed = false;
-        failureReasons.push(
-          `Expected status '${tc.expectedStatus}', got '${result.status}'`
-        );
-      }
-
-      if (result.status === "PASS" && result.comment) {
-        console.log(`Generated Comment: "${result.comment}"`);
-        console.log(`Selected Angle: ${result.contribution.selectedAngle}`);
-        console.log(
-          `Personalization Level: Level ${result.contribution.personalizationLevel}`
-        );
-
-        if (tc.prohibitKeywords) {
-          for (const kw of tc.prohibitKeywords) {
-            if (result.comment.toLowerCase().includes(kw.toLowerCase())) {
-              tcPassed = false;
-              failureReasons.push(
-                `Contains prohibited keyword/phrase: "${kw}" (Topic Hijacking / Cliche)`
-              );
-            }
-          }
-        }
-      } else if (result.status === "SKIP") {
-        console.log(`Skip Reason: ${result.critic.critiqueSummary}`);
-      }
+      const failureReasons = evaluateResult(tc, result);
+      const tcPassed = failureReasons.length === 0;
+      console.log(JSON.stringify({ reaction: tc.userReaction, comment: result.comment, reason: result.contribution.skipReason }));
 
       if (tcPassed) {
         console.log(`✅ RESULT: PASSED`);
@@ -107,8 +81,9 @@ async function runEvaluationSuite() {
   console.log(`Total: ${EVAL_TEST_CASES.length}`);
   console.log(`Passed: ${passedTests}`);
   console.log(`Failed: ${failedTests}`);
-  console.log(`Success Rate: ${((passedTests / EVAL_TEST_CASES.length) * 100).toFixed(1)}%`);
+  console.log(`Automated check pass rate: ${((passedTests / EVAL_TEST_CASES.length) * 100).toFixed(1)}%`);
   console.log("=================================================\n");
+  if (failedTests > 0) process.exitCode = 1;
 }
 
 runEvaluationSuite();

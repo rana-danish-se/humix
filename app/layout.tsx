@@ -10,21 +10,20 @@ const comfortaa = Comfortaa({
 });
 
 export const metadata: Metadata = {
-  title: "humix | AI Social Comment Intelligence Engine",
+  title: "humix | Reply Editor",
   description:
-    "Generate human, authentic, up to 1.5 sentence comments for LinkedIn, Reddit & Facebook. Avoid generic AI-slop, summaries, and topic hijacking.",
+    "Start with your own reaction. Edit a reply for LinkedIn, Reddit or Facebook and review it for added claims before posting.",
   keywords: [
-    "Social Comment Generator",
-    "AI Comment Intelligence",
+    "Reply Editor",
+    "Comment Editing",
     "LinkedIn Commenting Tool",
-    "Outbound Prospecting AI",
-    "Anti-Slop AI",
+    "Writing Assistance",
   ],
   authors: [{ name: "humix Team" }],
   openGraph: {
-    title: "humix | AI Social Comment Intelligence Engine",
+    title: "humix | Reply Editor",
     description:
-      "Generate human, authentic, up to 1.5 sentence comments for LinkedIn, Reddit & Facebook.",
+      "Edit your own reaction into a reply. Review every edit before posting.",
     type: "website",
   },
 };

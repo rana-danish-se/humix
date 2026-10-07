@@ -29,6 +29,13 @@ export async function POST(request: Request) {
       );
     }
 
+    if (typeof context !== "string" || !context.trim()) {
+      return NextResponse.json(
+        { error: "Add your own reaction or rough reply first. Humix edits your thought instead of inventing one.", code: "REACTION_REQUIRED" },
+        { status: 400 }
+      );
+    }
+
     const platformName: PlatformType =
       platform === "Reddit" || platform === "Facebook" ? platform : "LinkedIn";
 
@@ -89,7 +96,7 @@ export async function POST(request: Request) {
       );
     }
     return NextResponse.json(
-      { error: "Comment drafting failed. Try another model or a shorter post.", code: "DRAFT_FAILED" },
+      { error: "Editing or review could not finish. No draft was approved. Your original reaction is unchanged.", code: "DRAFT_FAILED" },
       { status: 503 }
     );
   }

@@ -11,12 +11,12 @@ export default function Header() {
               humix
             </span>
             <span className="ml-2 text-xs px-2.5 py-0.5 rounded-full font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
-              Comment Intelligence
+              Reply Editor
             </span>
           </div>
         </div>
         <p className="text-xs font-medium text-slate-500 hidden sm:block">
-          Anti-Slop &bull; No Topic Hijacking &bull; SKIP Capable
+          Start with your own words
         </p>
       </div>
     </header>

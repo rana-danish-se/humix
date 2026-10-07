@@ -90,6 +90,7 @@ export interface ContributionResult {
 
 export interface CommentGenerationResult {
   comment: string;
+  abstentionReason?: string;
   wordCount: number;
   sentenceCount: number;
   editorScore?: number;
@@ -102,6 +103,9 @@ export interface QualityCriticResult {
   score: number; // 0 to 100
   reasons: string[];
   checks: {
+    preservesUserMeaning: boolean;
+    noUnsupportedClaims: boolean;
+    fairlyRepresentsPost: boolean;
     understandsPost: boolean;
     followsSelectedAngle: boolean;
     preservesAuthorTopic: boolean;
@@ -119,6 +123,11 @@ export interface QualityCriticResult {
     noFabricatedExperience: boolean;
   };
   critiqueSummary: string;
+  grounding: Array<{
+    claim: string;
+    source: "reaction" | "post";
+    evidenceQuote: string;
+  }>;
 }
 
 export interface LLMStepDebug {
@@ -138,11 +147,12 @@ export interface LLMStepDebug {
 export interface PipelineResult {
   status: "PASS" | "SKIP" | "REGENERATE";
   comment?: string;
-  analysis: PostAnalysisResult;
+  analysis?: PostAnalysisResult;
   contribution: ContributionResult;
-  critic: QualityCriticResult;
+  critic?: QualityCriticResult;
   stepDebugLogs: LLMStepDebug[];
   promptGuard?: {
+    status: "checked" | "unavailable";
     isAttack: boolean;
     score: number;
     flagged: boolean;

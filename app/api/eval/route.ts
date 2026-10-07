@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { evaluateResult } from "@/lib/eval/evaluateResult";
 import { EVAL_TEST_CASES } from "@/lib/eval/testCases";
 import { runCommentIntelligencePipeline } from "@/lib/agent/pipeline";
 
@@ -33,31 +34,13 @@ export async function POST(request: Request) {
     const result = await runCommentIntelligencePipeline(
       tc.postText,
       tc.platform,
-      undefined,
+      tc.userReaction,
       selectedProvider,
       selectedModel
     );
 
-    let tcPassed = true;
-    const failureReasons: string[] = [];
-
-    if (result.status !== tc.expectedStatus) {
-      tcPassed = false;
-      failureReasons.push(
-        `Expected status '${tc.expectedStatus}', got '${result.status}'`
-      );
-    }
-
-    if (result.status === "PASS" && result.comment && tc.prohibitKeywords) {
-      for (const kw of tc.prohibitKeywords) {
-        if (result.comment.toLowerCase().includes(kw.toLowerCase())) {
-          tcPassed = false;
-          failureReasons.push(
-            `Contains prohibited keyword/phrase: "${kw}" (Topic Hijacking / Cliche)`
-          );
-        }
-      }
-    }
+    const failureReasons = evaluateResult(tc, result);
+    const tcPassed = failureReasons.length === 0;
 
     return NextResponse.json({
       testCase: tc,

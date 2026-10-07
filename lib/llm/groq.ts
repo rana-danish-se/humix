@@ -87,10 +87,10 @@ export async function callGroq(
 
 export async function checkGroqPromptGuard(
   text: string
-): Promise<{ isAttack: boolean; score: number }> {
+): Promise<{ status: "checked" | "unavailable"; isAttack: boolean; score: number }> {
   const apiKey = process.env.GROQ_API_KEY?.trim();
   if (!apiKey || !text || !text.trim()) {
-    return { isAttack: false, score: 0 };
+    return { status: "unavailable", isAttack: false, score: 0 };
   }
 
   try {
@@ -108,19 +108,22 @@ export async function checkGroqPromptGuard(
     });
 
     if (!response.ok) {
-      return { isAttack: false, score: 0 };
+      return { status: "unavailable", isAttack: false, score: 0 };
     }
 
     const data = await response.json();
-    const raw = data.choices?.[0]?.message?.content?.trim() || "0";
-    const score = parseFloat(raw);
-    const validScore = Number.isFinite(score) ? score : 0;
+    const raw = data.choices?.[0]?.message?.content?.trim();
+    const score = raw ? Number(raw) : NaN;
+    if (!Number.isFinite(score) || score < 0 || score > 1) {
+      return { status: "unavailable", isAttack: false, score: 0 };
+    }
     return {
-      isAttack: validScore > 0.85,
-      score: validScore,
+      status: "checked",
+      isAttack: score > 0.85,
+      score,
     };
   } catch (err) {
     console.warn("Groq Prompt Guard check skipped:", err);
-    return { isAttack: false, score: 0 };
+    return { status: "unavailable", isAttack: false, score: 0 };
   }
 }
