@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/.eval-results.json
+/.promptfoo/
 
 # next.js
 /.next/

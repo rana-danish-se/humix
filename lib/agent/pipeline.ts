@@ -1,107 +1,64 @@
-import { analyzePost } from "./postAnalyzer";
-import { analyzeContribution } from "./contributionAnalyzer";
-import { generateCommentCandidate } from "./commentGenerator";
+import { generateCommentCandidates } from "./commentGenerator";
 import { evaluateCommentQuality } from "./qualityCritic";
-import {
-  LLMProvider, LLMStepDebug, PipelineResult, PlatformType, PostAnalysisResult,
-  ContributionResult, QualityCriticResult, checkGroqPromptGuard,
-} from "@/lib/llm";
+import { checkGroqPromptGuard, type PipelineMode, type PipelineResult, type LLMProvider, type PlatformType, type WritingContext } from "@/lib/llm";
 
 export async function runCommentIntelligencePipeline(
-  postText: string, platform: PlatformType = "LinkedIn", userAdditionalContext?: string,
-  providerOrMode: LLMProvider | "collaborative" = "collaborative", model?: string,
-  criticProvider?: LLMProvider, criticModel?: string
+  postText: string, platform: PlatformType = "LinkedIn", userContext = "",
+  mode: PipelineMode = "collaborative", model?: string,
+  criticProvider?: LLMProvider, criticModel?: string, options: WritingContext = {},
 ): Promise<PipelineResult> {
-  const startTime = Date.now();
-  const stepDebugLogs: LLMStepDebug[] = [];
-  const collaborative = providerOrMode === "collaborative";
-  const defaultModels: Record<LLMProvider, string> = {
+  const started = Date.now();
+  const defaults: Record<LLMProvider, string> = {
     groq: "openai/gpt-oss-120b", gemini: "gemini-3.7-flash", openrouter: "nvidia/nemotron-3-ultra-550b-a55b:free",
   };
-  const role = (preferred: LLMProvider) => {
-    const provider = collaborative ? preferred : providerOrMode;
-    return { provider, model: (!collaborative && model) || defaultModels[provider] };
+  const writer = mode === "collaborative" ? "groq" : mode;
+  const reviewer = criticProvider || (mode === "collaborative" ? "gemini" : writer);
+  const result: PipelineResult = {
+    status: "SKIP", comments: [], message: "", stepDebugLogs: [],
+    metadata: { platform, pipelineMode: mode, executionTimeMs: 0, attempts: 0 },
   };
-  const reader = role("groq");
-  const strategy = role("gemini");
-  const writer = role("openrouter");
-  const editor = role("groq");
-  const reviewer = role("gemini");
-  if (criticProvider) {
-    reviewer.provider = criticProvider;
-    reviewer.model = criticModel || defaultModels[criticProvider];
-  } else if (criticModel) reviewer.model = criticModel;
-
-  let analysis: PostAnalysisResult | undefined;
-  let critic: QualityCriticResult | undefined;
-  let promptGuard: PipelineResult["promptGuard"];
-  let contribution: ContributionResult = {
-    shouldSkip: true, skipReasonCode: "INSUFFICIENT_CONTEXT",
-    skipReason: "Add your own reaction or rough reply. Humix edits your thought instead of inventing one.",
-    personalizationLevel: 0, topicHijackRisk: false,
+  const finish = (status: PipelineResult["status"], message: string) => {
+    result.status = status;
+    result.message = message;
+    result.metadata.executionTimeMs = Date.now() - started;
+    return result;
   };
-  let writerUsed: { provider?: LLMProvider; model?: string } = {};
-  const finish = (status: PipelineResult["status"], comment?: string): PipelineResult => ({
-    status, ...(status === "PASS" && comment ? { comment } : {}),
-    analysis, contribution, critic, stepDebugLogs, promptGuard,
-    metadata: {
-      platform, pipelineMode: providerOrMode, providerUsed: writerUsed.provider || providerOrMode,
-      modelUsed: writerUsed.model || "Not run",
-      criticProviderUsed: stepDebugLogs.findLast(step => step.stepIndex === 4 || step.stepIndex === 4.5)?.providerUsed,
-      criticModelUsed: stepDebugLogs.findLast(step => step.stepIndex === 4 || step.stepIndex === 4.5)?.modelUsed,
-      executionTimeMs: Date.now() - startTime,
-    },
-  });
-  const stop = (reason: string): PipelineResult => {
-    contribution = { ...contribution, shouldSkip: true, skipReason: reason };
-    return finish("SKIP");
-  };
-
-  // This boundary applies to API, evaluation and direct callers, before any LLM.
-  if (typeof userAdditionalContext !== "string" || !userAdditionalContext.trim()) return finish("SKIP");
-  const reaction = userAdditionalContext.trim();
-
-  const guardStart = Date.now();
-  const guard = await checkGroqPromptGuard(postText + "\n" + reaction);
-  promptGuard = { ...guard, flagged: guard.isAttack };
-  stepDebugLogs.push({
-    stepIndex: 0, stepName: "Input Guard", agentName: "Input Guard",
-    systemPrompt: "Check inputs for prompt injection.", userPrompt: "",
-    rawResponseText: JSON.stringify(guard), parsedOutput: guard, executionTimeMs: Date.now() - guardStart,
-    ...(guard.status === "checked" ? { providerUsed: "groq" as const, modelUsed: "meta-llama/llama-prompt-guard-2-86m" } : {}),
-  });
-  if (guard.isAttack) return stop("The input guard flagged instructions that could interfere with drafting. Remove embedded instructions and try again.");
-
-  const read = await analyzePost(postText, platform, reader.provider, reader.model);
-  analysis = read.result;
-  stepDebugLogs.push(read.debug);
-  const relevance = await analyzeContribution(postText, platform, analysis, reaction, strategy.provider, strategy.model);
-  contribution = relevance.result;
-  stepDebugLogs.push(relevance.debug);
-  if (contribution.shouldSkip) return finish("SKIP");
-
-  let generation = await generateCommentCandidate(postText, platform, analysis, contribution,
-    writer.provider, writer.model, reaction, editor.provider, editor.model);
-  writerUsed = { provider: generation.debug.providerUsed, model: generation.debug.modelUsed };
-  stepDebugLogs.push(generation.debug);
-  if (!generation.result.comment) return stop(generation.result.abstentionReason || "No faithful edit was found.");
-
-  let review = await evaluateCommentQuality(postText, platform, generation.result.comment,
-    analysis, contribution, reviewer.provider, reviewer.model, reaction);
-  critic = review.result;
-  stepDebugLogs.push(review.debug);
-  // Only wording defects get one retry. Unsupported premises stop immediately.
-  if (critic.verdict === "REGENERATE") {
-    generation = await generateCommentCandidate(postText, platform, analysis, contribution,
-      writer.provider, writer.model, reaction, editor.provider, editor.model, critic.reasons.join("; "));
-    writerUsed = { provider: generation.debug.providerUsed, model: generation.debug.modelUsed };
-    stepDebugLogs.push({ ...generation.debug, stepIndex: 3.5, stepName: "Wording Revision" });
-    if (!generation.result.comment) return stop(generation.result.abstentionReason || "No faithful revision was found.");
-    review = await evaluateCommentQuality(postText, platform, generation.result.comment,
-      analysis, contribution, reviewer.provider, reviewer.model, reaction);
-    critic = review.result;
-    stepDebugLogs.push({ ...review.debug, stepIndex: 4.5 });
+  if (typeof postText !== "string" || !postText.trim()) return finish("SKIP", "Paste the full post first.");
+  // Direct callers use the same bounded input contract as the API.
+  if (postText.length > 16000 || typeof userContext !== "string" || userContext.length > 3000 ||
+      (options.authorContext !== undefined && (typeof options.authorContext !== "string" || options.authorContext.length > 1000)) ||
+      [options.voiceSamples, options.recentComments].some((items, index) => items !== undefined &&
+        (!Array.isArray(items) || items.length > (index === 0 ? 5 : 12) || items.some(item => typeof item !== "string" || item.length > 700)))) {
+    return finish("SKIP", "Some input is invalid or too long. Shorten it and try again.");
   }
-  if (critic.verdict === "SKIP") contribution = { ...contribution, shouldSkip: true, skipReason: critic.critiqueSummary };
-  return finish(critic.verdict, generation.result.comment);
+  const post = postText.trim();
+  const guard = await checkGroqPromptGuard(post + "\n" + userContext);
+  result.promptGuard = guard;
+  if (guard.isAttack) return finish("SKIP", "The input contains instructions that interfere with drafting. Remove them and try again.");
+  let feedback: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    result.metadata.attempts++;
+    const generated = await generateCommentCandidates(post, platform, userContext, options, writer,
+      (mode !== "collaborative" && model) || defaults[writer], feedback);
+    result.analysis = generated.result.analysis;
+    result.stepDebugLogs.push({ ...generated.debug, stepIndex: attempt * 2 + 1 });
+    result.metadata.providerUsed = generated.debug.providerUsed;
+    result.metadata.modelUsed = generated.debug.modelUsed;
+    if (generated.result.analysis.missingContext.trim() || !generated.result.candidates.length) {
+      return finish("SKIP", generated.result.skipReason || generated.result.analysis.missingContext);
+    }
+    const reviewed = await evaluateCommentQuality(post, platform, userContext, generated.result.candidates, options, reviewer,
+      criticModel || (mode !== "collaborative" && !criticProvider && model) || defaults[reviewer]);
+    result.review = reviewed.result;
+    result.stepDebugLogs.push({ ...reviewed.debug, stepIndex: attempt * 2 + 2 });
+    result.metadata.criticProviderUsed = reviewed.debug.providerUsed;
+    result.metadata.criticModelUsed = reviewed.debug.modelUsed;
+    if (reviewed.comments.length === 3) {
+      result.comments = reviewed.comments;
+      return finish("PASS", "Three different ways to join the conversation. Choose the one you agree with.");
+    }
+    feedback = { previousCandidates: generated.result.candidates, review: reviewed.result,
+      instruction: "Create a complete improved set. Address the rejected premises; do not merely rephrase them. Supply three distinct acceptable options." };
+  }
+  return finish("REGENERATE", "I couldn't find three distinct comments that passed review. Add any missing context or try another set.");
 }

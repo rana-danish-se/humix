@@ -24,7 +24,7 @@ export async function callGroq(
       },
     ],
     temperature: request.temperature ?? 0.2,
-    max_tokens: Math.min(Math.max(request.maxTokens ?? 1000, 64), 2500),
+    max_tokens: Math.min(Math.max(request.maxTokens ?? 1000, 64), 4500),
   };
 
   // Only enable response_format json_object for models known to support it cleanly

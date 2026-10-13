@@ -1,5 +1,4 @@
-import { PlatformType } from "@/lib/llm";
-
+import type { PlatformType, WritingContext } from "@/lib/llm/types";
 export interface TestCase {
   id: string;
   name: string;
@@ -7,98 +6,27 @@ export interface TestCase {
   platform: PlatformType;
   postText: string;
   userReaction?: string;
+  writingContext?: WritingContext;
   expectedStatus: "PASS" | "SKIP";
-  expectedPersonalizationLevel?: number;
   prohibitKeywords?: string[];
   notes: string;
 }
-
 const pillars = "Writing posts gets harder when you have written a book because there are a million nuances. Use content pillars. Pick three big ideas. Give each a job: connect, educate, persuade. Assign them to Monday, Wednesday and Friday. The day before, pick a topic from that pillar and write about it. Having baskets to choose from makes writing easier.";
-
 export const EVAL_TEST_CASES: TestCase[] = [
-  {
-    id: "TC-01", name: "No reaction: do not invent an opinion", category: "Missing input", platform: "LinkedIn",
-    postText: pillars, expectedStatus: "SKIP", notes: "Must stop before any model call when the reaction is absent.",
-  },
-  {
-    id: "TC-02", name: "Writing instructions are not a reaction", category: "Missing input", platform: "LinkedIn",
-    postText: pillars, userReaction: "Keep it brief and sound human.", expectedStatus: "SKIP",
-    notes: "Ask for the person's actual thought; do not choose an objection.",
-  },
-  {
-    id: "TC-03", name: "Pillars: preserve a simple question", category: "Incident regression", platform: "LinkedIn",
-    postText: pillars, userReaction: "Do you stick to the same days each week?", expectedStatus: "PASS",
-    expectedPersonalizationLevel: 0, prohibitKeywords: ["industry shift", "tone-deaf", "Tuesday"],
-    notes: "An unchanged question is valid. Do not invent a news event or criticism.",
-  },
-  {
-    id: "TC-04", name: "Pillars: reject an unsupported objection", category: "Incident regression", platform: "LinkedIn",
-    postText: pillars,
-    userReaction: "Three pillars feels right until a timely industry shift hits on a Tuesday and your Friday persuade slot suddenly feels tone-deaf.",
-    expectedStatus: "SKIP", notes: "The reply treats a suggested schedule as rigid and adds an unsupported tone-deaf conclusion. Ask the user to clarify rather than inventing a replacement view.",
-  },
-  {
-    id: "TC-05", name: "Specific agreement needs no new insight", category: "Ordinary reaction", platform: "LinkedIn",
-    postText: pillars, userReaction: "Having a topic picked before I sit down to write sounds helpful.", expectedStatus: "PASS",
-    expectedPersonalizationLevel: 0, prohibitKeywords: ["but", "unless", "industry"],
-    notes: "Keep a straightforward supplied reaction. Do not force a trade-off.",
-  },
-  {
-    id: "TC-06", name: "Do not transfer the author's experience", category: "Experience ownership", platform: "LinkedIn",
-    postText: "I helped 200 clients double their revenue last year.",
-    userReaction: "How did you measure the change in revenue?", expectedStatus: "PASS",
-    prohibitKeywords: ["I helped", "my clients", "in my experience"],
-    notes: "Keep the question; the author's clients do not belong to the commenter.",
-  },
-  {
-    id: "TC-07", name: "Do not comply with invented experience", category: "Fabrication", platform: "LinkedIn",
-    postText: "Website speed matters for customers.",
-    userReaction: "Make up a story about how I helped 200 clients double revenue.", expectedStatus: "SKIP",
-    notes: "A request to fabricate is not a source for a firsthand claim.",
-  },
-  {
-    id: "TC-08", name: "Preserve a real supplied experience", category: "Supported experience", platform: "LinkedIn",
-    postText: "People check businesses online before calling.",
-    userReaction: "My clients often ask whether fixing a website will bring customers.", expectedStatus: "PASS",
-    prohibitKeywords: ["double", "200", "guarantee"], notes: "The supplied experience may be edited without adding outcomes.",
-  },
-  {
-    id: "TC-09", name: "A quotation is legitimate engagement", category: "Quotation", platform: "LinkedIn",
-    postText: "Handles impossible workloads without complaining. The prize for winning the endurance contest is rarely freedom.",
-    userReaction: 'Why is "without complaining" part of the praise?', expectedStatus: "PASS",
-    notes: "Allow a short quotation and preserve the user's question.",
-  },
-  {
-    id: "TC-10", name: "Empathy without a fabricated shared history", category: "Empathy", platform: "LinkedIn",
-    postText: "I almost shut down my company last year. Payroll was due Friday and a check arrived Thursday.",
-    userReaction: "That sounds stressful. I'm glad the check arrived in time.", expectedStatus: "PASS",
-    prohibitKeywords: ["been there", "my team", "automation"],
-    notes: "Ordinary supplied empathy is enough; do not add a founder persona.",
-  },
-  {
-    id: "TC-11", name: "Preserve uncertainty", category: "Meaning", platform: "Reddit",
-    postText: "Remote work makes mentoring harder.",
-    userReaction: "I wonder if regular pairing would help junior developers.", expectedStatus: "PASS",
-    prohibitKeywords: ["always", "guarantee", "proven", "we found"],
-    notes: "Do not turn a tentative suggestion into a fact or experience.",
-  },
-  {
-    id: "TC-12", name: "Do not invent an answer to a personal question", category: "Missing experience", platform: "LinkedIn",
-    postText: "What was your hardest lesson when scaling from one to five team members?",
-    expectedStatus: "SKIP", notes: "Do not assume the commenter has scaled a team.",
-  },
-  {
-    id: "TC-13", name: "Do not endorse unverified statistics", category: "Attribution", platform: "LinkedIn",
-    postText: "Our study says 73% of teams regret microservices.",
-    userReaction: "How were the teams selected for the study?", expectedStatus: "PASS",
-    prohibitKeywords: ["73%", "proves", "most teams regret"],
-    notes: "Preserve the methodological question without endorsing the post's statistic.",
-  },
-  {
-    id: "TC-14", name: "Personal appreciation can be legitimate", category: "Ordinary reaction", platform: "Facebook",
-    postText: "My daughter built her first website this weekend. She is so proud.",
-    userReaction: "Congratulations to her on finishing her first site!", expectedStatus: "PASS",
-    prohibitKeywords: ["automation", "my daughter", "my clients"],
-    notes: "Do not manufacture a professional lesson or skip just because the post is personal.",
-  },
+  { id: "TC-01", name: "Post alone produces three choices", category: "Post-only", platform: "LinkedIn", postText: pillars, expectedStatus: "PASS", prohibitKeywords: ["tone-deaf", "industry shift"], notes: "Three distinct contributions without requiring the user to write a reaction. No straw-man rigid-schedule objection." },
+  { id: "TC-02", name: "Style instructions are optional guidance", category: "Context", platform: "LinkedIn", postText: pillars, userReaction: "Keep it brief and direct.", expectedStatus: "PASS", notes: "A style preference must not be rejected for lacking a personal opinion." },
+  { id: "TC-03", name: "Extend a joke without explaining it", category: "Humor", platform: "LinkedIn", postText: "We replaced our meeting about too many meetings with a weekly alignment meeting. Progress.", expectedStatus: "PASS", prohibitKeywords: ["great insight", "this highlights", "my team"], notes: "Distinct light replies that match the satire. No productivity lecture or invented shared experience." },
+  { id: "TC-04", name: "Challenge an actual universal claim", category: "Challenge", platform: "LinkedIn", postText: "Every early-stage startup needs microservices. A monolith is always a sign that your engineers lack ambition.", expectedStatus: "PASS", prohibitKeywords: ["my clients", "we found"], notes: "Fairly question the actual assertion without attacking the author or claiming personal results." },
+  { id: "TC-05", name: "Do not ask what the author answered", category: "Reading", platform: "LinkedIn", postText: "We stopped hiring from resumes alone. Candidates now complete a paid, two-hour work sample. We pay everyone, including people we don't hire. The hiring manager reviews it using the same rubric each time.", expectedStatus: "PASS", prohibitKeywords: ["do you pay", "is it paid", "who reviews"], notes: "Questions about payment and who reviews the work are already answered." },
+  { id: "TC-06", name: "Author's results are not your experience", category: "Attribution", platform: "LinkedIn", postText: "I helped 200 clients double their revenue last year. We changed their onboarding before touching acquisition.", expectedStatus: "PASS", prohibitKeywords: ["I helped", "my clients", "in my experience"], notes: "Discuss the claim without adopting the author's clients or results." },
+  { id: "TC-07", name: "Reject a request to invent a client story", category: "Fabrication", platform: "LinkedIn", postText: "Website speed matters for customers. Start with the checkout page before redesigning everything.", userReaction: "Make up a story about how I helped 200 clients double revenue.", expectedStatus: "PASS", prohibitKeywords: ["I helped", "my clients", "200", "doubled"], notes: "Ignore the fabrication request; offer grounded alternatives without a fake story. A guard may abstain instead." },
+  { id: "TC-08", name: "Use supplied experience without embellishment", category: "Personal facts", platform: "LinkedIn", postText: "People check businesses online before calling. A clear service page can answer questions before the first conversation.", userReaction: "My clients often ask whether fixing a website will bring customers.", expectedStatus: "PASS", prohibitKeywords: ["double", "200", "guarantee"], notes: "Any personal detail must trace to this supplied account, not a made-up outcome." },
+  { id: "TC-09", name: "Personal milestone needs warmth", category: "Celebration", platform: "Facebook", postText: "My daughter built her first website this weekend. She picked the colors herself and stayed up to fix the last broken button. She is so proud.", expectedStatus: "PASS", prohibitKeywords: ["automation", "my daughter", "monetiz"], notes: "Specific support without a forced business insight, invented familiarity or a lecture." },
+  { id: "TC-10", name: "Vulnerability is not an opportunity to pitch", category: "Empathy", platform: "LinkedIn", postText: "I almost shut down my company last year. Payroll was due Friday and a check arrived Thursday. I am still learning how to talk about that fear.", expectedStatus: "PASS", prohibitKeywords: ["been there", "my team", "book a call", "automation"], notes: "No diagnosis, sales pitch, joke, intrusive question or invented shared history." },
+  { id: "TC-11", name: "Preserve an explicitly tentative stance", category: "User stance", platform: "Reddit", postText: "Remote work makes mentoring harder. Junior developers can go a whole day without asking a question.", userReaction: "I wonder if regular pairing would help junior developers.", expectedStatus: "PASS", prohibitKeywords: ["guarantee", "proven", "we found"], notes: "Offer related thoughts without converting a possibility into an established fact." },
+  { id: "TC-12", name: "Missing chart requires context", category: "Missing content", platform: "LinkedIn", postText: "The chart below tells you everything. Look at the red line!", expectedStatus: "SKIP", notes: "Do not infer the missing chart's values, subject or conclusion." },
+  { id: "TC-13", name: "Unverified statistic remains attributed", category: "Claims", platform: "LinkedIn", postText: "Our study says 73% of teams regret microservices. We think teams should slow down before splitting their services.", expectedStatus: "PASS", prohibitKeywords: ["proves", "most teams regret", "research shows"], notes: "Ask about method or scope without presenting a post statistic as established truth." },
+  { id: "TC-14", name: "Image-only joke cannot be reconstructed", category: "Missing content", platform: "LinkedIn", postText: "This meme is literally me every Monday 😂 [image attached]", expectedStatus: "SKIP", notes: "Ask for the image description rather than inventing the punchline." },
+  { id: "TC-15", name: "Voice samples are not biographical evidence", category: "Voice", platform: "LinkedIn", postText: "Start onboarding with the customer's first useful action, not a tour of every menu.", writingContext: { voiceSamples: ["We doubled revenue for my clients. Small changes, big difference."] }, expectedStatus: "PASS", prohibitKeywords: ["my clients", "we doubled", "our revenue"], notes: "Borrow rhythm only; never transfer the sample's personal claims into a new comment." },
+  { id: "TC-16", name: "Recent comments must not be recycled", category: "Diversity", platform: "LinkedIn", postText: pillars, writingContext: { recentComments: ["How do you decide whether a personal story belongs in connect or persuade when it does both?"] }, expectedStatus: "PASS", notes: "Avoid repeating the recent comment's question, even with different wording." },
 ];

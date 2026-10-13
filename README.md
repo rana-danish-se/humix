@@ -1,36 +1,67 @@
-# Humix — Reply Editor
+# Humix — three thoughtful comments
 
-Humix edits a person's own reaction to a LinkedIn, Reddit or Facebook post. A post by itself is not enough to generate a reply. The app does not infer the person's opinion, expertise or experience from a stored profile.
+Paste a complete LinkedIn, Reddit or Facebook post. Humix reads it, drafts different
+contributions and returns the top three reviewed comments. Choose the one you agree
+with and copy it. Humix never posts to a social network.
 
-## Workflow
+## How it works
 
-1. Paste the original post and write your own reaction or rough reply.
-2. The post reader identifies what the author actually says, without proposing angles.
-3. The reaction reviewer checks whether your thought can be expressed fairly and relevantly. Style instructions alone do not qualify.
-4. The draft editor makes at most two small edits. A selector can reject both. It never assigns a fallback quality score.
-5. An independent reviewer checks the original post, your reaction and the draft. Every sentence needs a supporting excerpt from your reaction. Code verifies those excerpts exist and cover the draft; the model assesses whether they support its meaning.
-6. Compare the suggested edit with your original before copying it. Changing the inputs hides stale results.
+1. Optional input guard checks for embedded instructions.
+2. A writer reads the post, explains its point and tone, and drafts five different
+   ideas. Your reaction is optional. Questions, implications, fair challenges,
+   practical suggestions, humor and specific support are valid contributions.
+3. An independent review call checks the original post, each full comment, source
+   evidence, tone, false assumptions, already-answered questions and repetition.
+   Local `retext-simplify` hints inform that review without blindly rewriting jokes.
+4. The reviewer ranks three distinct options. Code checks all required review
+   fields, quote existence, full draft coverage, duplicates and simple wording rules.
+   A weak set gets one complete revision and another review. A successful response
+   always has exactly three options; rejected drafts are never padded into the set.
+5. The UI shows a short post summary and three individually copyable cards.
 
-Specific agreement, a question, appreciation or empathy are enough. No new insight or counterargument is required. Unsupported premises stop the draft. Only wording defects get one revision attempt. Empty candidates, failed selection and missing context produce no draft. Missing or malformed final review cannot approve a draft.
+Normally two generative calls plus the optional guard; up to four calls on revision,
+excluding provider retries/fallbacks. Automatic mode requests Groq for writing and
+Gemini for review; actual models are shown in review details. Fallbacks may use the
+same provider. No guarantee of model independence or human judgment is implied.
 
-The copy button does not publish to any platform. A completed review is not a guarantee of truth, naturalness or resemblance to your voice. Model judgments can fail, and supplied user facts are not independently verified. If a thought needs factual checking, verify it before supplying it.
+## Your voice and privacy
+
+Add up to five writing samples and optional author/relationship context. Samples
+guide wording, never claims about your life. Only explicit facts in the optional
+reaction field can support firsthand statements. Unsupported requests to invent
+experience are ignored or rejected. No built-in persona asserts that you ran a
+company, served clients or achieved results.
+
+Writing samples and the last twelve copied comments stay in this browser's local
+storage and are included in generation requests to the configured AI providers.
+The clear button removes that saved history. Copying records a selection, not proof
+that you posted it. The app does not fetch LinkedIn, images, carousels or linked pages:
+include the relevant text or description. It asks for missing essential context.
+
+Reviews can be wrong. Source containment checks do not prove semantic entailment or
+verify a user's facts. No AI-detection score or guarantee of naturalness is offered.
 
 ## Development
 
-Install dependencies with `npm install`, configure provider keys in `.env.local`, and run `npm run dev`.
-
-Supported environment variables: `GROQ_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`. Never commit them.
-
-Multiple-provider mode requests Groq for reading and selection, Gemini for reaction and final review, and OpenRouter for editing. Provider fallbacks can change which model actually runs. The inspector records actual responses, including selection details. Model availability depends on provider configuration.
-
-The input guard is advisory when unavailable; unavailable is not reported as clean. A positive flag stops drafting. Original post and reaction are treated as data in every prompt.
+Run `npm install`, configure `GROQ_API_KEY`, `GEMINI_API_KEY` and/or
+`OPENROUTER_API_KEY` in `.env.local`, then `npm run dev`.
+Keys are server-only. Model availability and free quotas depend on the provider.
 
 ## Verification
 
-- `npm run test:comments`: deterministic validation, provider payload tests and mocked end-to-end failure scenarios. No network calls or quality claims.
-- `npm run lint`
-- `npx tsc --noEmit`
-- `npm run build`
-- The Reply Checks tab runs live fixtures with supplied reactions and requires configured providers. It checks response contracts, required review fields, prohibited phrases and personalization. It does not prove that wording sounds natural.
+- `npm run test:comments`: deterministic wording/duplicate checks, actual retext
+  integration, provider payload checks, API validation and mocked pipeline failures.
+- `npm run lint`, `npx tsc --noEmit`, `npm run build`.
+- With the server running, `npm run eval:comments -- --limit=4` runs live fixtures.
+  Use `--case=TC-03` or `--provider=groq` to narrow a run. Results are saved to ignored
+  `.eval-results.json`; live calls consume provider quota.
+- `npm run eval:compare` uses Promptfoo to compare automatic and Groq-only modes.
+  The local server must be running. Its assertions check contracts, not whether a
+  person would choose the comment. Open the results with `npx promptfoo view`.
+- The Quality checks tab exposes the same live fixtures in the app.
 
-Live fixtures include the content-pillars incident, ordinary agreement, evidence ownership, quotations, fabricated experience requests, missing reactions and preservation of uncertainty. Keep a human review of real drafts before relying on changes to prompts or models.
+Human review should judge relevance, added value, humor, false assumptions,
+voice, repetition and whether each option could be posted unchanged. Check a varied
+set of real posts before changing the default model based on test pass rates.
+
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for writing-rule sources.

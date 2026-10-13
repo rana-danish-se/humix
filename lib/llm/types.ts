@@ -1,11 +1,6 @@
 export type LLMProvider = "groq" | "gemini" | "openrouter";
-export type PipelineMode = "collaborative" | "groq" | "gemini" | "openrouter";
-
-export interface LLMMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
-
+export type PipelineMode = LLMProvider | "collaborative";
+export type PlatformType = "LinkedIn" | "Reddit" | "Facebook";
 export interface LLMRequest {
   systemPrompt: string;
   userPrompt: string;
@@ -13,166 +8,93 @@ export interface LLMRequest {
   maxTokens?: number;
   responseFormat?: "json" | "text";
 }
-
 export interface LLMResponse {
   text: string;
+  // Provider payloads are validated at each application boundary.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   parsedJson?: any;
   providerUsed: LLMProvider;
   modelUsed: string;
 }
-
 export class LLMHttpError extends Error {
   constructor(public status: number, message: string) {
     super(message);
     this.name = "LLMHttpError";
   }
 }
-
-export type PlatformType = "LinkedIn" | "Reddit" | "Facebook";
-
+export interface WritingContext {
+  voiceSamples?: string[];
+  recentComments?: string[];
+  authorContext?: string;
+}
 export interface PostAnalysisResult {
   coreIdea: string;
-  subject: string;
-  authorIntention: string;
-  postType:
-    | "founder_insight"
-    | "personal_story"
-    | "marketing_advice"
-    | "coach_post"
-    | "controversial_opinion"
-    | "ai_tech"
-    | "lifestyle"
-    | "promotional"
-    | "question";
   tone: string;
-  emotionalContext: string;
-  claims: string[];
-  implicitIdeas: string[];
-  potentialContributionOpportunities: string[];
-  evidenceLevel?: {
-    personal?: string[];
-    interpretive?: string[];
-    generalized?: string[];
-    advice?: string[];
-  };
+  intent: string;
+  missingContext: string;
 }
-
-export type SkipReasonCode =
-  | "PURE_LIFESTYLE_NO_HOOK"
-  | "PURE_PROMOTIONAL_NO_HOOK"
-  | "NO_DISCUSSION_SURFACE"
-  | "ONLY_SUMMARY_ECHO_POSSIBLE"
-  | "REQUIRES_FABRICATION"
-  | "TOPIC_HIJACK_RISK"
-  | "NO_GENUINE_CONTRIBUTION"
-  | "POST_TOO_SHORT"
-  | "INSUFFICIENT_CONTEXT";
-
-export interface ContributionResult {
-  shouldSkip: boolean;
-  skipReason?: string;
-  skipReasonCode?: SkipReasonCode;
-  selectedAngle?:
-    | "personal_experience"
-    | "relevant_observation"
-    | "useful_nuance"
-    | "respectful_disagreement"
-    | "additional_example"
-    | "practical_perspective"
-    | "relevant_question"
-    | "alternative_interpretation";
-  angleExplanation?: string;
-  personalizationLevel: 0 | 1 | 2 | 3;
-  topicHijackRisk: boolean;
-  relevantContextSnippet?: string;
+export const COMMENT_ANGLES = ["question", "insight", "practical", "challenge", "humor", "support"] as const;
+export type CommentAngle = typeof COMMENT_ANGLES[number];
+export interface CommentOption {
+  id: number;
+  angle: CommentAngle;
+  text: string;
+  anchor: string;
+  contribution: string;
 }
-
-export interface CommentGenerationResult {
-  comment: string;
-  abstentionReason?: string;
-  wordCount: number;
-  sentenceCount: number;
-  editorScore?: number;
-  editorReason?: string;
-  editorModelUsed?: string;
+export interface CandidateBatch {
+  analysis: PostAnalysisResult;
+  candidates: CommentOption[];
+  skipReason: string;
 }
-
-export interface QualityCriticResult {
-  verdict: "PASS" | "REGENERATE" | "SKIP";
-  score: number; // 0 to 100
+export const QUALITY_CHECKS = [
+  "understandsPost", "addsValue", "notGeneric", "toneFits", "naturalVoice",
+  "noUnsupportedClaims", "noFabricatedExperience", "fairChallenge", "questionNotAnswered",
+  "noPromotion", "respectsUserContext", "notRepetitive",
+] as const;
+export interface CandidateReview {
+  id: number;
+  checks: Record<typeof QUALITY_CHECKS[number], boolean>;
   reasons: string[];
-  checks: {
-    preservesUserMeaning: boolean;
-    noUnsupportedClaims: boolean;
-    fairlyRepresentsPost: boolean;
-    understandsPost: boolean;
-    followsSelectedAngle: boolean;
-    preservesAuthorTopic: boolean;
-    addsNewObservation: boolean;
-    isNotSummary: boolean;
-    isNotGeneric: boolean;
-    fails20PostTest: boolean; // true if it would fit 20 unrelated posts (BAD)
-    personalContextIsRelevant: boolean;
-    avoidsTopicHijacking: boolean;
-    avoidsSelfPromotion: boolean;
-    avoidsAISlop: boolean;
-    fitsPlatform: boolean;
-    soundsNaturalHuman: boolean;
-    proportionalLength: boolean;
-    noFabricatedExperience: boolean;
-  };
-  critiqueSummary: string;
   grounding: Array<{
     claim: string;
-    source: "reaction" | "post";
+    kind: "post" | "personal" | "inference" | "question" | "humor" | "reaction";
     evidenceQuote: string;
   }>;
 }
-
+export interface BatchReview {
+  reviews: CandidateReview[];
+  selectedIds: number[];
+  distinct: boolean;
+  summary: string;
+}
 export interface LLMStepDebug {
   stepIndex: number;
   stepName: string;
-  agentName: string;
   systemPrompt: string;
   userPrompt: string;
   rawResponseText: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  parsedOutput: any;
+  parsedOutput: unknown;
   executionTimeMs: number;
   providerUsed?: LLMProvider;
   modelUsed?: string;
 }
-
 export interface PipelineResult {
   status: "PASS" | "SKIP" | "REGENERATE";
-  comment?: string;
+  comments: CommentOption[];
   analysis?: PostAnalysisResult;
-  contribution: ContributionResult;
-  critic?: QualityCriticResult;
+  message: string;
+  review?: BatchReview;
   stepDebugLogs: LLMStepDebug[];
-  promptGuard?: {
-    status: "checked" | "unavailable";
-    isAttack: boolean;
-    score: number;
-    flagged: boolean;
-  };
+  promptGuard?: { status: "checked" | "unavailable"; isAttack: boolean; score: number };
   metadata: {
     platform: PlatformType;
-    pipelineMode?: PipelineMode;
-    providerRoles?: {
-      safety?: { provider: LLMProvider; model: string };
-      analysis: { provider: LLMProvider; model: string };
-      strategy: { provider: LLMProvider; model: string };
-      generation: { provider: LLMProvider; model: string };
-      editor?: { provider: LLMProvider; model: string };
-      critic: { provider: LLMProvider; model: string };
-    };
-    modelUsed: string;
-    providerUsed: LLMProvider | "collaborative";
-    criticModelUsed?: string;
+    pipelineMode: PipelineMode;
+    providerUsed?: LLMProvider;
+    modelUsed?: string;
     criticProviderUsed?: LLMProvider;
-    editorScore?: number;
+    criticModelUsed?: string;
     executionTimeMs: number;
+    attempts: number;
   };
 }

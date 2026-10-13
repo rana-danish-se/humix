@@ -15,7 +15,7 @@ export async function callGemini(
 
   const generationConfig: Record<string, unknown> = {
     temperature: request.temperature ?? 0.2,
-    maxOutputTokens: Math.min(Math.max(request.maxTokens ?? 1200, 128), 3000),
+    maxOutputTokens: Math.min(Math.max(request.maxTokens ?? 1200, 128), 4500),
   };
 
   if (request.responseFormat === "json") {

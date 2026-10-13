@@ -10,20 +10,20 @@ const comfortaa = Comfortaa({
 });
 
 export const metadata: Metadata = {
-  title: "humix | Reply Editor",
+  title: "humix | Three thoughtful comments",
   description:
-    "Start with your own reaction. Edit a reply for LinkedIn, Reddit or Facebook and review it for added claims before posting.",
+    "Paste a post and choose from three relevant comments with different angles, matched to the conversation.",
   keywords: [
-    "Reply Editor",
-    "Comment Editing",
+    "Comment Suggestions",
+    "Thoughtful Comments",
     "LinkedIn Commenting Tool",
     "Writing Assistance",
   ],
   authors: [{ name: "humix Team" }],
   openGraph: {
-    title: "humix | Reply Editor",
+    title: "humix | Three thoughtful comments",
     description:
-      "Edit your own reaction into a reply. Review every edit before posting.",
+      "Understand the post at a glance and choose from three different comments.",
     type: "website",
   },
 };

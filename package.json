@@ -7,12 +7,16 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "eval:comments": "node scripts/eval-suite.mjs",
+    "eval:compare": "promptfoo eval --config promptfooconfig.yaml",
     "test:comments": "node tests/commentValidation.test.cjs && node tests/openrouter.test.cjs && node tests/groq.test.cjs && node tests/replySafety.test.cjs"
   },
   "dependencies": {
     "next": "16.3.4",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "retext": "^9.0.0",
+    "retext-simplify": "^8.0.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -21,6 +25,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
+    "promptfoo": "^0.124.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

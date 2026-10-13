@@ -1,0 +1,29 @@
+description: Compare Humix provider modes on three-comment quality fixtures
+prompts:
+  - '{{caseId}}'
+providers:
+  - id: file://scripts/promptfoo-provider.cjs
+    label: Automatic writer and reviewer
+    config:
+      provider: collaborative
+  - id: file://scripts/promptfoo-provider.cjs
+    label: Groq only
+    config:
+      provider: groq
+evaluateOptions:
+  maxConcurrency: 1
+defaultTest:
+  assert:
+    - type: javascript
+      value: JSON.parse(output).passed === true
+tests:
+  - vars:
+      caseId: TC-01
+  - vars:
+      caseId: TC-03
+  - vars:
+      caseId: TC-05
+  - vars:
+      caseId: TC-12
+  - vars:
+      caseId: TC-15

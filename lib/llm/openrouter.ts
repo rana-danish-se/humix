@@ -30,7 +30,7 @@ export async function callOpenRouter(
       },
     ],
     temperature: request.temperature ?? 0.25,
-    max_tokens: Math.min(Math.max(request.maxTokens ?? 1000, 64), 2500),
+    max_tokens: Math.min(Math.max(request.maxTokens ?? 1000, 64), 4500),
   };
 
   if (request.responseFormat === "json") {

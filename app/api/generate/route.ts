@@ -19,8 +19,14 @@ function providerFailureReason(error: unknown): string {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { post, platform, context, provider, model } = body;
+    let body;
+    try { body = await request.json(); } catch {
+      return NextResponse.json({ error: "Send a valid JSON request." }, { status: 400 });
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    }
+    const { post, platform, context = "", provider, model, voiceSamples = [], recentComments = [], authorContext = "" } = body;
 
     if (!post || typeof post !== "string" || !post.trim()) {
       return NextResponse.json(
@@ -29,9 +35,13 @@ export async function POST(request: Request) {
       );
     }
 
-    if (typeof context !== "string" || !context.trim()) {
+    if (post.length > 16000 || typeof context !== "string" || context.length > 3000 ||
+        typeof authorContext !== "string" || authorContext.length > 1000 ||
+        (model !== undefined && (typeof model !== "string" || model.length > 150)) ||
+        [voiceSamples, recentComments].some((items, index) => !Array.isArray(items) || items.length > (index === 0 ? 5 : 12) ||
+          items.some((item: unknown) => typeof item !== "string" || item.length > 700))) {
       return NextResponse.json(
-        { error: "Add your own reaction or rough reply first. Humix edits your thought instead of inventing one.", code: "REACTION_REQUIRED" },
+        { error: "Some input is invalid or too long. Shorten it and try again.", code: "INVALID_INPUT" },
         { status: 400 }
       );
     }
@@ -59,7 +69,10 @@ export async function POST(request: Request) {
       platformName,
       context,
       selectedProvider,
-      selectedModel
+      selectedModel,
+      undefined,
+      undefined,
+      { voiceSamples, recentComments, authorContext }
     );
 
     return NextResponse.json(result);
@@ -96,7 +109,7 @@ export async function POST(request: Request) {
       );
     }
     return NextResponse.json(
-      { error: "Editing or review could not finish. No draft was approved. Your original reaction is unchanged.", code: "DRAFT_FAILED" },
+      { error: "Generation or review could not finish. Try again or choose another model.", code: "DRAFT_FAILED" },
       { status: 503 }
     );
   }

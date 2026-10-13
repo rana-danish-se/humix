@@ -36,7 +36,10 @@ export async function POST(request: Request) {
       tc.platform,
       tc.userReaction,
       selectedProvider,
-      selectedModel
+      selectedModel,
+      undefined,
+      undefined,
+      tc.writingContext
     );
 
     const failureReasons = evaluateResult(tc, result);
