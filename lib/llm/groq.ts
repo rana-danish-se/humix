@@ -1,129 +1,49 @@
-import { LLMHttpError, LLMRequest, LLMResponse } from "./types";
+import { DEFAULT_MODELS, LLMRequest, LLMResponse } from "./types";
+import { openAIChat, parseModelJson } from "./shared";
 
-export async function callGroq(
-  request: LLMRequest,
-  model: string = "openai/gpt-oss-120b"
-): Promise<LLMResponse> {
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+
+export async function callGroq(request: LLMRequest, model: string = DEFAULT_MODELS.groq): Promise<LLMResponse> {
   const apiKey = process.env.GROQ_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error("GROQ_API_KEY environment variable is not set");
-  }
-
-  const modelSlug = model && model.trim() ? model.trim() : "openai/gpt-oss-120b";
-
-  const payload: Record<string, unknown> = {
-    model: modelSlug,
-    messages: [
-      {
-        role: "system",
-        content: request.systemPrompt,
-      },
-      {
-        role: "user",
-        content: request.userPrompt,
-      },
-    ],
-    temperature: request.temperature ?? 0.2,
-    max_tokens: Math.min(Math.max(request.maxTokens ?? 1000, 64), 4500),
-  };
-
+  if (!apiKey) throw new Error("GROQ_API_KEY environment variable is not set");
+  const modelSlug = model?.trim() || DEFAULT_MODELS.groq;
   // Only enable response_format json_object for models known to support it cleanly
-  if (request.responseFormat === "json" && !modelSlug.includes("gpt-oss-20b")) {
-    payload.response_format = { type: "json_object" };
-  }
-
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(25000),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new LLMHttpError(
-      response.status,
-      `Groq API request failed with status ${response.status}: ${errorText}`
-    );
-  }
-
-  const data = await response.json();
-  const rawText = data.choices?.[0]?.message?.content || "";
-
-  let parsedJson: unknown = undefined;
-  if (request.responseFormat === "json") {
-    try {
-      const cleaned = rawText.replace(/```(?:json)?\n?|\n?```/g, "").trim();
-      try {
-        parsedJson = JSON.parse(cleaned);
-      } catch {
-        const firstBrace = cleaned.indexOf("{");
-        const lastBrace = cleaned.lastIndexOf("}");
-        if (firstBrace !== -1 && lastBrace > firstBrace) {
-          parsedJson = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
-        } else {
-          const firstBracket = cleaned.indexOf("[");
-          const lastBracket = cleaned.lastIndexOf("]");
-          if (firstBracket !== -1 && lastBracket > firstBracket) {
-            parsedJson = JSON.parse(cleaned.slice(firstBracket, lastBracket + 1));
-          }
-        }
-      }
-    } catch {
-      console.warn("Failed to parse Groq JSON response:", rawText);
-    }
-  }
-
+  const jsonMode = request.responseFormat === "json" && !modelSlug.includes("gpt-oss-20b");
+  const result = await openAIChat("Groq", GROQ_URL, { Authorization: `Bearer ${apiKey}` }, modelSlug, request,
+    { defaultTemperature: 0.2, jsonMode });
   return {
-    text: rawText,
-    parsedJson,
+    text: result.text,
+    parsedJson: request.responseFormat === "json" ? parseModelJson(result.text, "Groq") : undefined,
     providerUsed: "groq",
-    modelUsed: typeof data.model === "string" ? data.model : modelSlug,
+    modelUsed: result.model,
   };
 }
 
 export async function checkGroqPromptGuard(
   text: string
 ): Promise<{ status: "checked" | "unavailable"; isAttack: boolean; score: number }> {
+  const unavailable = { status: "unavailable" as const, isAttack: false, score: 0 };
   const apiKey = process.env.GROQ_API_KEY?.trim();
-  if (!apiKey || !text || !text.trim()) {
-    return { status: "unavailable", isAttack: false, score: 0 };
-  }
-
+  if (!apiKey || !text || !text.trim()) return unavailable;
   try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const response = await fetch(GROQ_URL, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "meta-llama/llama-prompt-guard-2-86m",
         messages: [{ role: "user", content: text.slice(0, 4000) }],
       }),
-      signal: AbortSignal.timeout(5000),
+      // Optional check: never let it hold up drafting for long.
+      signal: AbortSignal.timeout(3000),
     });
-
-    if (!response.ok) {
-      return { status: "unavailable", isAttack: false, score: 0 };
-    }
-
+    if (!response.ok) return unavailable;
     const data = await response.json();
     const raw = data.choices?.[0]?.message?.content?.trim();
     const score = raw ? Number(raw) : NaN;
-    if (!Number.isFinite(score) || score < 0 || score > 1) {
-      return { status: "unavailable", isAttack: false, score: 0 };
-    }
-    return {
-      status: "checked",
-      isAttack: score > 0.85,
-      score,
-    };
+    if (!Number.isFinite(score) || score < 0 || score > 1) return unavailable;
+    return { status: "checked", isAttack: score > 0.85, score };
   } catch (err) {
-    console.warn("Groq Prompt Guard check skipped:", err);
-    return { status: "unavailable", isAttack: false, score: 0 };
+    console.warn("Groq Prompt Guard check skipped:", err instanceof Error ? err.message : err);
+    return unavailable;
   }
 }

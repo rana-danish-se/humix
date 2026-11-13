@@ -11,8 +11,8 @@ function harness(queue = [], options = {}) {
     const exports = {};
     cache.set(file, exports);
     const js = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-    vm.runInNewContext(js, { exports, console, require: id => {
-      if (id === '@/lib/llm') return {
+    vm.runInNewContext(js, { exports, console, ...options.globals, require: id => {
+      if (id === '@/lib/llm' && !options.realLLM) return {
         ...load('lib/llm/types.ts'),
         checkGroqPromptGuard: async () => { guardCalls++; return options.guard || { status: 'checked', isAttack: false, score: 0 }; },
         callModel: async (provider, model, request) => {

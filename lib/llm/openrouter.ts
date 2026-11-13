@@ -1,95 +1,36 @@
-import { LLMHttpError, LLMRequest, LLMResponse } from "./types";
+import { DEFAULT_MODELS, LLMHttpError, LLMRequest, LLMResponse } from "./types";
+import { openAIChat, parseModelJson } from "./shared";
 
-export async function callOpenRouter(
-  request: LLMRequest,
-  model: string = "nvidia/nemotron-3-ultra-550b-a55b:free"
-): Promise<LLMResponse> {
+// OpenRouter tries these in order when the requested model is down or rate limited.
+const FREE_FALLBACK_MODELS = [
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "poolside/laguna-s-2.1:free",
+  "cohere/north-mini-code:free",
+];
+
+export async function callOpenRouter(request: LLMRequest, model: string = DEFAULT_MODELS.openrouter): Promise<LLMResponse> {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error("OPENROUTER_API_KEY environment variable is not set");
-  }
-
-  const modelSlug = model && model.trim() ? model.trim() : "nvidia/nemotron-3-ultra-550b-a55b:free";
-  const fallbackModels = [
-    "nvidia/nemotron-3-super-120b-a12b:free",
-    "poolside/laguna-s-2.1:free",
-    "cohere/north-mini-code:free",
-  ].filter((candidate) => candidate !== modelSlug).slice(0, 3);
-
-  const payload: Record<string, unknown> = {
-    model: modelSlug,
-    models: fallbackModels,
-    messages: [
-      {
-        role: "system",
-        content: request.systemPrompt,
-      },
-      {
-        role: "user",
-        content: request.userPrompt,
-      },
-    ],
-    temperature: request.temperature ?? 0.25,
-    max_tokens: Math.min(Math.max(request.maxTokens ?? 1000, 64), 4500),
-  };
-
-  if (request.responseFormat === "json") {
-    payload.response_format = { type: "json_object" };
-  }
-
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "http://localhost:3000",
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY environment variable is not set");
+  const modelSlug = model?.trim() || DEFAULT_MODELS.openrouter;
+  try {
+    const result = await openAIChat("OpenRouter", "https://openrouter.ai/api/v1/chat/completions", {
+      Authorization: `Bearer ${apiKey}`,
+      "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
       "X-Title": "Humix Comment Intelligence",
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(25000),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    if (response.status === 402) {
-      throw new LLMHttpError(402, `OpenRouter credits exhausted or insufficient (402 Payment Required). Please add credits to your OpenRouter account or switch to the Google Gemini provider.`);
+    }, modelSlug, request, {
+      defaultTemperature: 0.25, jsonMode: request.responseFormat === "json",
+      extra: { models: FREE_FALLBACK_MODELS.filter(candidate => candidate !== modelSlug) },
+    });
+    return {
+      text: result.text,
+      parsedJson: request.responseFormat === "json" ? parseModelJson(result.text, "OpenRouter") : undefined,
+      providerUsed: "openrouter",
+      modelUsed: result.model,
+    };
+  } catch (error) {
+    if (error instanceof LLMHttpError && error.status === 402) {
+      throw new LLMHttpError(402, "OpenRouter credits exhausted or insufficient (402 Payment Required). Please add credits to your OpenRouter account or switch to the Google Gemini provider.");
     }
-    throw new LLMHttpError(response.status,
-      `OpenRouter API request failed with status ${response.status}: ${errorText}`
-    );
+    throw error;
   }
-
-  const data = await response.json();
-  const rawText = data.choices?.[0]?.message?.content || "";
-
-  let parsedJson: unknown = undefined;
-  if (request.responseFormat === "json") {
-    try {
-      const cleaned = rawText.replace(/```(?:json)?\n?|\n?```/g, "").trim();
-      try {
-        parsedJson = JSON.parse(cleaned);
-      } catch {
-        const firstBrace = cleaned.indexOf("{");
-        const lastBrace = cleaned.lastIndexOf("}");
-        if (firstBrace !== -1 && lastBrace > firstBrace) {
-          parsedJson = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
-        } else {
-          const firstBracket = cleaned.indexOf("[");
-          const lastBracket = cleaned.lastIndexOf("]");
-          if (firstBracket !== -1 && lastBracket > firstBracket) {
-            parsedJson = JSON.parse(cleaned.slice(firstBracket, lastBracket + 1));
-          }
-        }
-      }
-    } catch {
-      console.warn("Failed to parse OpenRouter JSON response:", rawText);
-    }
-  }
-
-  return {
-    text: rawText,
-    parsedJson,
-    providerUsed: "openrouter",
-    modelUsed: typeof data.model === "string" ? data.model : modelSlug,
-  };
 }

@@ -16,8 +16,13 @@ export interface LLMResponse {
   providerUsed: LLMProvider;
   modelUsed: string;
 }
+export const DEFAULT_MODELS: Record<LLMProvider, string> = {
+  groq: "openai/gpt-oss-120b",
+  gemini: "gemini-3.7-flash",
+  openrouter: "nvidia/nemotron-3-ultra-550b-a55b:free",
+};
 export class LLMHttpError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public retryAfterMs?: number) {
     super(message);
     this.name = "LLMHttpError";
   }

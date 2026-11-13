@@ -1,105 +1,47 @@
-import { LLMHttpError, LLMRequest, LLMResponse } from "./types";
+import { DEFAULT_MODELS, LLMRequest, LLMResponse } from "./types";
+import { httpError, parseModelJson, REQUEST_TIMEOUT_MS } from "./shared";
 
-export async function callGemini(
-  request: LLMRequest,
-  model: string = "gemini-3.7-flash"
-): Promise<LLMResponse> {
+const LITE_MODEL = "gemini-3.5-flash-lite";
+
+export async function callGemini(request: LLMRequest, model: string = DEFAULT_MODELS.gemini): Promise<LLMResponse> {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY environment variable is not set");
-  }
-
-  const modelName = model && model.trim() ? model.trim() : "gemini-3.7-flash";
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+  if (!apiKey) throw new Error("GEMINI_API_KEY environment variable is not set");
+  const modelName = model?.trim() || DEFAULT_MODELS.gemini;
 
   const generationConfig: Record<string, unknown> = {
     temperature: request.temperature ?? 0.2,
     maxOutputTokens: Math.min(Math.max(request.maxTokens ?? 1200, 128), 4500),
   };
+  if (request.responseFormat === "json") generationConfig.responseMimeType = "application/json";
+  const requestBody: Record<string, unknown> = { contents: [{ parts: [{ text: request.userPrompt }] }], generationConfig };
+  if (request.systemPrompt?.trim()) requestBody.systemInstruction = { parts: [{ text: request.systemPrompt }] };
 
-  if (request.responseFormat === "json") {
-    generationConfig.responseMimeType = "application/json";
-  }
-
-  const requestBody: Record<string, unknown> = {
-    contents: [
-      {
-        parts: [{ text: request.userPrompt }],
-      },
-    ],
-    generationConfig,
-  };
-
-  if (request.systemPrompt && request.systemPrompt.trim()) {
-    requestBody.systemInstruction = {
-      parts: [{ text: request.systemPrompt }],
-    };
-  }
-
-  let response = await fetch(url, {
+  // The key travels in a header so it never appears in URLs or request logs.
+  const send = (name: string) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(name)}:generateContent`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify(requestBody),
-    signal: AbortSignal.timeout(25000),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
   let activeModel = modelName;
-  if (!response.ok && (response.status === 503 || response.status === 429) && modelName !== "gemini-3.5-flash-lite") {
-    console.warn(`Gemini model ${modelName} returned ${response.status}. Falling back to gemini-3.5-flash-lite...`);
-    const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`;
-    activeModel = "gemini-3.5-flash-lite";
-    response = await fetch(fallbackUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(25000),
-    });
+  let response = await send(modelName);
+  // Free-tier quotas are per model, so a busy or rate-limited model can hand over to the lite one.
+  if (!response.ok && (response.status === 503 || response.status === 429) && modelName !== LITE_MODEL) {
+    console.warn(`Gemini model ${modelName} returned ${response.status}. Falling back to ${LITE_MODEL}...`);
+    activeModel = LITE_MODEL;
+    response = await send(LITE_MODEL);
   }
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new LLMHttpError(response.status, `Gemini API call failed (${response.status}): ${errorText}`);
-  }
+  if (!response.ok) throw await httpError(response, "Gemini");
 
   const data = await response.json();
   const parts = (data.candidates?.[0]?.content?.parts || []) as Array<{ text?: string; thought?: boolean }>;
-  // For Gemini 3.7 / 3.5 thinking models, filter out the thought part to get the actual output
-  const contentPart = parts.find((p) => p.text && !p.thought) || parts[0];
-  const rawText = contentPart?.text || "";
-
-  let parsedJson: unknown = undefined;
-  if (request.responseFormat === "json") {
-    try {
-      const cleaned = rawText.replace(/```(?:json)?\n?|\n?```/g, "").trim();
-      try {
-        parsedJson = JSON.parse(cleaned);
-      } catch {
-        // Fallback: search for first and last { } or [ ]
-        const firstBrace = cleaned.indexOf("{");
-        const lastBrace = cleaned.lastIndexOf("}");
-        if (firstBrace !== -1 && lastBrace > firstBrace) {
-          parsedJson = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
-        } else {
-          const firstBracket = cleaned.indexOf("[");
-          const lastBracket = cleaned.lastIndexOf("]");
-          if (firstBracket !== -1 && lastBracket > firstBracket) {
-            parsedJson = JSON.parse(cleaned.slice(firstBracket, lastBracket + 1));
-          }
-        }
-      }
-    } catch {
-      console.warn("Failed to parse Gemini JSON response:", rawText);
-    }
-  }
+  // Thinking models return thought parts first; the answer is every remaining text part.
+  const rawText = parts.filter(p => p.text && !p.thought).map(p => p.text).join("") || parts[0]?.text || "";
 
   return {
     text: rawText,
-    parsedJson,
+    parsedJson: request.responseFormat === "json" ? parseModelJson(rawText, "Gemini") : undefined,
     providerUsed: "gemini",
     modelUsed: activeModel,
   };

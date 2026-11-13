@@ -54,12 +54,6 @@ export function modelErrorResponse(error: unknown) {
   );
 }
 
-export const DEFAULT_MODELS = {
-  groq: "openai/gpt-oss-120b",
-  gemini: "gemini-3.7-flash",
-  openrouter: "nvidia/nemotron-3-ultra-550b-a55b:free",
-} as const;
-
 // Voice samples (max 5) and recent comments (max 12), each at most 700 characters.
 export function validWritingLists(voiceSamples: unknown, recentComments: unknown): boolean {
   return [voiceSamples, recentComments].every((items, index) => Array.isArray(items) && items.length <= (index === 0 ? 5 : 12) &&

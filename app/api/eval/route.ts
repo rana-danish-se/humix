@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { evaluateResult } from "@/lib/eval/evaluateResult";
 import { EVAL_TEST_CASES } from "@/lib/eval/testCases";
 import { runCommentIntelligencePipeline } from "@/lib/agent/pipeline";
+import { DEFAULT_MODELS, type LLMProvider } from "@/lib/llm";
 
 export async function GET() {
   return NextResponse.json({ testCases: EVAL_TEST_CASES });
@@ -17,19 +18,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Test case not found" }, { status: 404 });
     }
 
-    const selectedProvider =
+    const selectedProvider: LLMProvider | "collaborative" =
       provider === "groq" || provider === "gemini" || provider === "openrouter"
         ? provider
         : "collaborative";
     const selectedModel =
-      model ||
-      (selectedProvider === "collaborative"
-        ? undefined
-        : selectedProvider === "groq"
-        ? "openai/gpt-oss-120b"
-        : selectedProvider === "gemini"
-        ? "gemini-3.7-flash"
-        : "nvidia/nemotron-3-ultra-550b-a55b:free");
+      model || (selectedProvider === "collaborative" ? undefined : DEFAULT_MODELS[selectedProvider]);
 
     const result = await runCommentIntelligencePipeline(
       tc.postText,

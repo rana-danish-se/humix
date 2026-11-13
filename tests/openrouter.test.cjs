@@ -1,36 +1,17 @@
-const ts = require("typescript");
-const fs = require("node:fs");
-const vm = require("node:vm");
 const assert = require("node:assert/strict");
+const { harness } = require("./harness.cjs");
 
-const source = fs.readFileSync("lib/llm/openrouter.ts", "utf8");
-const js = ts.transpileModule(source, {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-}).outputText;
-const moduleExports = {};
 let payload;
-vm.runInNewContext(js, {
-  exports: moduleExports,
-  require: () => ({}),
-  process: { env: { OPENROUTER_API_KEY: "test-key" } },
-  AbortSignal,
-  console,
+const { callOpenRouter } = harness([], { globals: { AbortSignal, process: { env: { OPENROUTER_API_KEY: "test-key" } },
   fetch: async (_url, options) => {
     payload = JSON.parse(options.body);
-    return {
-      ok: true,
-      json: async () => ({ model: "anthropic/claude-sonnet-4.6", choices: [{ message: { content: '{"comments":[]}' } }] }),
-    };
-  },
-});
+    return { ok: true, json: async () => ({ model: "anthropic/claude-sonnet-4.6", choices: [{ message: { content: '{"comments":[]}' } }] }) };
+  } } }).load("lib/llm/openrouter.ts");
 
-moduleExports.callOpenRouter({ systemPrompt: "x", userPrompt: "y", maxTokens: 450, responseFormat: "json" }, "anthropic/claude-sonnet-4.6")
+callOpenRouter({ systemPrompt: "x", userPrompt: "y", maxTokens: 450, responseFormat: "json" }, "anthropic/claude-sonnet-4.6")
   .then(() => {
     assert.equal(payload.max_tokens, 450);
     assert.equal(payload.models[0], "nvidia/nemotron-3-super-120b-a12b:free");
     console.log("OpenRouter output limit and fallback passed.");
   })
-  .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
+  .catch((error) => { console.error(error); process.exitCode = 1; });

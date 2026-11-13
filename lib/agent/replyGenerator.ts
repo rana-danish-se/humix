@@ -1,4 +1,4 @@
-import { callModel, checkGroqPromptGuard, REPLY_MOVES, type LLMProvider, type LLMStepDebug, type PipelineMode,
+import { callModel, checkGroqPromptGuard, DEFAULT_MODELS, REPLY_MOVES, type LLMProvider, type LLMStepDebug, type PipelineMode,
   type PlatformType, type ReplyAnalysis, type ReplyOption, type ReplyResult, type ReplyThreadInput, type WritingContext } from "@/lib/llm";
 import { DEFAULT_VOICE } from "@/lib/context/userProfile";
 import { normalize, similarComments, validateComment } from "./commentGenerator";
@@ -86,9 +86,6 @@ export async function runReplyPipeline(
   mode: PipelineMode = "collaborative", model?: string, options: WritingContext = {},
 ): Promise<ReplyResult> {
   const started = Date.now();
-  const defaults: Record<LLMProvider, string> = {
-    groq: "openai/gpt-oss-120b", gemini: "gemini-3.7-flash", openrouter: "nvidia/nemotron-3-ultra-550b-a55b:free",
-  };
   const writer = mode === "collaborative" ? "groq" : mode;
   const result: ReplyResult = { status: "SKIP", replies: [], message: "", stepDebugLogs: [],
     metadata: { platform, executionTimeMs: 0, attempts: 0 } };
@@ -121,7 +118,7 @@ export async function runReplyPipeline(
   let feedback: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     result.metadata.attempts++;
-    const drafted = await draftReplies(clean, platform, evidence, writing, writer, (mode !== "collaborative" && model) || defaults[writer], feedback);
+    const drafted = await draftReplies(clean, platform, evidence, writing, writer, (mode !== "collaborative" && model) || DEFAULT_MODELS[writer], feedback);
     result.analysis = drafted.analysis;
     result.stepDebugLogs.push({ ...drafted.debug, stepIndex: attempt + 1 });
     result.metadata.providerUsed = drafted.debug.providerUsed;

@@ -7,7 +7,7 @@ export function withProfileFacts(userContext: string, profileFacts?: string): st
   return [userContext.trim(), facts && `Standing facts about me (true; use only when directly relevant):\n${facts}`].filter(Boolean).join("\n\n");
 }
 import { evaluateCommentQuality } from "./qualityCritic";
-import { checkGroqPromptGuard, type PipelineMode, type PipelineResult, type LLMProvider, type PlatformType, type WritingContext } from "@/lib/llm";
+import { checkGroqPromptGuard, DEFAULT_MODELS, type PipelineMode, type PipelineResult, type LLMProvider, type PlatformType, type WritingContext } from "@/lib/llm";
 
 export async function runCommentIntelligencePipeline(
   postText: string, platform: PlatformType = "LinkedIn", userContext = "",
@@ -15,9 +15,6 @@ export async function runCommentIntelligencePipeline(
   criticProvider?: LLMProvider, criticModel?: string, options: WritingContext = {},
 ): Promise<PipelineResult> {
   const started = Date.now();
-  const defaults: Record<LLMProvider, string> = {
-    groq: "openai/gpt-oss-120b", gemini: "gemini-3.7-flash", openrouter: "nvidia/nemotron-3-ultra-550b-a55b:free",
-  };
   const writer = mode === "collaborative" ? "groq" : mode;
   const reviewer = criticProvider || (mode === "collaborative" ? "gemini" : writer);
   const result: PipelineResult = {
@@ -49,7 +46,7 @@ export async function runCommentIntelligencePipeline(
   for (let attempt = 0; attempt < 2; attempt++) {
     result.metadata.attempts++;
     const generated = await generateCommentCandidates(post, platform, evidence, writing, writer,
-      (mode !== "collaborative" && model) || defaults[writer], feedback);
+      (mode !== "collaborative" && model) || DEFAULT_MODELS[writer], feedback);
     result.analysis = generated.result.analysis;
     result.stepDebugLogs.push({ ...generated.debug, stepIndex: attempt * 2 + 1 });
     result.metadata.providerUsed = generated.debug.providerUsed;
@@ -58,7 +55,7 @@ export async function runCommentIntelligencePipeline(
       return finish("SKIP", generated.result.skipReason || generated.result.analysis.missingContext);
     }
     const reviewed = await evaluateCommentQuality(post, platform, evidence, generated.result.candidates, writing, reviewer,
-      criticModel || (mode !== "collaborative" && !criticProvider && model) || defaults[reviewer]);
+      criticModel || (mode !== "collaborative" && !criticProvider && model) || DEFAULT_MODELS[reviewer]);
     result.review = reviewed.result;
     result.stepDebugLogs.push({ ...reviewed.debug, stepIndex: attempt * 2 + 2 });
     result.metadata.criticProviderUsed = reviewed.debug.providerUsed;

@@ -54,6 +54,15 @@ include the relevant text or description. It asks for missing essential context.
 Reviews can be wrong. Source containment checks do not prove semantic entailment or
 verify a user's facts. No AI-detection score or guarantee of naturalness is offered.
 
+## Providers and fallbacks
+
+Only providers with an API key are tried. If the chosen one fails, the others take over in
+order (Groq → Gemini → OpenRouter, and so on). A rate-limited provider is skipped until its
+limit window passes, so later requests do not wait on it. Server errors and malformed JSON
+get one more try on the same provider; rate limits, timeouts and rejected keys move on at
+once. Models that reject JSON mode are retried without it. Set at least two keys for
+reliable free-tier use.
+
 ## Development
 
 Run `npm install`, configure `GROQ_API_KEY`, `GEMINI_API_KEY` and/or
