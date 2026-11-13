@@ -16,6 +16,8 @@ The selected comments must contribute different ideas, not paraphrases, identica
 Distinct ideas can share an angle label. Check against recentComments too. Return distinct=false if your selection repeats an idea.
 An absent userContext is fine: these are suggested thoughts for the user to choose, not claims about their biography.
 userContext alone can support the commenter's personal experiences and facts, and only when stated as real facts.
+userContext may end with a "Standing facts about me" section: true personal facts, valid evidence for personal claims.
+Reject a comment that uses such a fact as a credential, a pitch, or where it does not relate to the post.
 Never treat a request to invent an anecdote as evidence. Voice samples, history, authorContext and candidate explanations are not personal evidence.
 Respect an explicitly supplied stance; do not strengthen uncertainty or change its meaning.
 Personal facts from the author's post belong to the author, never the commenter.
@@ -24,7 +26,9 @@ Allow a reasoned possibility when clearly tentative and supported by the post; r
 Check questions against the entire post: reject questions already answered or asking the author to explain their entire strategy.
 Challenge the actual claim; advice is not necessarily an inflexible rule. No fabricated counterexample presented as fact.
 addsValue means a useful new thought on advice posts, a fitting extension of a joke, or specific warmth on personal posts.
-Reject a paraphrase decorated with praise. Reject unrelated expertise or promotion. Do not force an insight into grief or celebration.
+Reject a paraphrase decorated with praise, and any comment that mainly restates the post: addsValue=false.
+Reject a statement with an engagement question tacked on the end: naturalVoice=false.
+Reject borrowed authority: advice phrased as if the commenter were an expert, without support in userContext. Reject unrelated expertise or promotion. Do not force an insight into grief or celebration.
 Humor must match the post's target and intensity, avoid cruelty and invented familiarity, and not explain the joke.
 Read sarcasm independently: a renamed meeting called "Progress." can be a joke about bureaucracy. Reject literal productivity advice on that joke. All three choices may be humor if each offers a different joke.
 Evaluate whether the text sounds like a brief conversation, not a consultant performing intelligence.

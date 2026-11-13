@@ -24,6 +24,19 @@ excluding provider retries/fallbacks. Automatic mode requests Groq for writing a
 Gemini for review; actual models are shown in review details. Fallbacks may use the
 same provider. No guarantee of model independence or human judgment is implied.
 
+## Saved facts, caution flags and replies
+
+- **True facts about you** (under "Make it sound more like you") are saved in the browser and
+  sent with each request. They are the only standing source for firsthand claims; a comment
+  may use one when it fits the post. At least two drafts never need expertise at all.
+- Sensitive posts (loss, layoffs, politics, heated disputes) show a **Careful** note.
+- Comments that restate the post, tack on an engagement question, or contain dashes or
+  semicolons are rejected.
+- **Reply to a reply**: paste the post, your comment and their reply to get up to three next
+  replies. Copying a comment pre-fills the post and your comment. "I sent this" folds the
+  exchange into the thread history for the next round. Replies use one writer call plus code
+  checks (no second-model review), so read them before sending.
+
 ## Your voice and privacy
 
 Add up to five writing samples and optional author/relationship context. Samples
@@ -50,7 +63,8 @@ Keys are server-only. Model availability and free quotas depend on the provider.
 ## Verification
 
 - `npm run test:comments`: deterministic wording/duplicate checks, actual retext
-  integration, provider payload checks, API validation and mocked pipeline failures.
+  integration, provider payload checks, API validation, mocked pipeline failures and
+  reply-thread checks.
 - `npm run lint`, `npx tsc --noEmit`, `npm run build`.
 - With the server running, `npm run eval:comments -- --limit=4` runs live fixtures.
   Use `--case=TC-03` or `--provider=groq` to narrow a run. Results are saved to ignored

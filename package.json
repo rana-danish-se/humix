@@ -9,7 +9,7 @@
     "lint": "eslint",
     "eval:comments": "node scripts/eval-suite.mjs",
     "eval:compare": "promptfoo eval --config promptfooconfig.yaml",
-    "test:comments": "node tests/commentValidation.test.cjs && node tests/openrouter.test.cjs && node tests/groq.test.cjs && node tests/replySafety.test.cjs"
+    "test:comments": "node tests/commentValidation.test.cjs && node tests/openrouter.test.cjs && node tests/groq.test.cjs && node tests/replySafety.test.cjs && node tests/replyThread.test.cjs"
   },
   "dependencies": {
     "next": "16.3.4",

@@ -11,6 +11,9 @@ Use ordinary words, contractions and varied openings. Never add typos or random 
 Keep real uncertainty. Questions, passive voice, adverbs and punctuation are allowed when useful.
 Use writing samples for rhythm and vocabulary only, never for biographical facts.
 Usually 1-2 sentences, around 10-45 words; a good short joke can be shorter.
+Never summarize the post back to its author: they wrote it. Add one thing they did not say.
+Do not tack a question onto a statement just to invite engagement. A question must be the point of the comment.
+No em dashes, en dashes, semicolons or emojis. At most one exclamation mark, and only for warmth.
 No hashtags, markdown headings or promotional calls to action.`;
 
 const processor = retext().use(retextSimplify);

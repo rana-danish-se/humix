@@ -1,4 +1,11 @@
 import { generateCommentCandidates } from "./commentGenerator";
+
+// Saved facts are appended to the per-post context so the writer, the reviewer and
+// the deterministic checks all treat them as the same evidence source.
+export function withProfileFacts(userContext: string, profileFacts?: string): string {
+  const facts = (profileFacts || "").trim();
+  return [userContext.trim(), facts && `Standing facts about me (true; use only when directly relevant):\n${facts}`].filter(Boolean).join("\n\n");
+}
 import { evaluateCommentQuality } from "./qualityCritic";
 import { checkGroqPromptGuard, type PipelineMode, type PipelineResult, type LLMProvider, type PlatformType, type WritingContext } from "@/lib/llm";
 
@@ -27,18 +34,21 @@ export async function runCommentIntelligencePipeline(
   // Direct callers use the same bounded input contract as the API.
   if (postText.length > 16000 || typeof userContext !== "string" || userContext.length > 3000 ||
       (options.authorContext !== undefined && (typeof options.authorContext !== "string" || options.authorContext.length > 1000)) ||
+      (options.profileFacts !== undefined && (typeof options.profileFacts !== "string" || options.profileFacts.length > 1500)) ||
       [options.voiceSamples, options.recentComments].some((items, index) => items !== undefined &&
         (!Array.isArray(items) || items.length > (index === 0 ? 5 : 12) || items.some(item => typeof item !== "string" || item.length > 700)))) {
     return finish("SKIP", "Some input is invalid or too long. Shorten it and try again.");
   }
   const post = postText.trim();
-  const guard = await checkGroqPromptGuard(post + "\n" + userContext);
+  const { profileFacts, ...writing } = options;
+  const evidence = withProfileFacts(userContext, profileFacts);
+  const guard = await checkGroqPromptGuard(post + "\n" + evidence);
   result.promptGuard = guard;
   if (guard.isAttack) return finish("SKIP", "The input contains instructions that interfere with drafting. Remove them and try again.");
   let feedback: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     result.metadata.attempts++;
-    const generated = await generateCommentCandidates(post, platform, userContext, options, writer,
+    const generated = await generateCommentCandidates(post, platform, evidence, writing, writer,
       (mode !== "collaborative" && model) || defaults[writer], feedback);
     result.analysis = generated.result.analysis;
     result.stepDebugLogs.push({ ...generated.debug, stepIndex: attempt * 2 + 1 });
@@ -47,7 +57,7 @@ export async function runCommentIntelligencePipeline(
     if (generated.result.analysis.missingContext.trim() || !generated.result.candidates.length) {
       return finish("SKIP", generated.result.skipReason || generated.result.analysis.missingContext);
     }
-    const reviewed = await evaluateCommentQuality(post, platform, userContext, generated.result.candidates, options, reviewer,
+    const reviewed = await evaluateCommentQuality(post, platform, evidence, generated.result.candidates, writing, reviewer,
       criticModel || (mode !== "collaborative" && !criticProvider && model) || defaults[reviewer]);
     result.review = reviewed.result;
     result.stepDebugLogs.push({ ...reviewed.debug, stepIndex: attempt * 2 + 2 });

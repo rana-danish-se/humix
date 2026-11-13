@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { PipelineMode, PipelineResult, PlatformType } from "@/lib/llm/types";
 import { EVAL_TEST_CASES } from "@/lib/eval/testCases";
+import ReplyForm, { type ReplyThread } from "./ReplyForm";
 
 const MODELS: Record<Exclude<PipelineMode, "collaborative">, string[]> = {
   groq: ["openai/gpt-oss-120b", "openai/gpt-oss-20b"],
@@ -12,12 +13,17 @@ const MODELS: Record<Exclude<PipelineMode, "collaborative">, string[]> = {
 const ANGLES = { question: "Ask a useful question", insight: "Add a perspective", practical: "Make it practical", challenge: "Offer a fair challenge", humor: "Join the joke", support: "Show support" };
 const inputClass = "w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60";
 const storageKey = "humix-writing-v1";
+const emptyThread: ReplyThread = { post: "", myComment: "", theirReply: "", earlier: "", context: "" };
+const TABS = { generate: "New comment", reply: "Reply to a reply", checks: "Quality checks" } as const;
+const splitSamples = (text: string) => text.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
 
 export default function PostGeneratorForm() {
   const [post, setPost] = useState("");
   const [context, setContext] = useState("");
   const [authorContext, setAuthorContext] = useState("");
   const [samples, setSamples] = useState("");
+  const [facts, setFacts] = useState("");
+  const [thread, setThread] = useState<ReplyThread>(emptyThread);
   const [recent, setRecent] = useState<string[]>([]);
   const [platform, setPlatform] = useState<PlatformType>("LinkedIn");
   const [provider, setProvider] = useState<PipelineMode>("collaborative");
@@ -28,11 +34,11 @@ export default function PostGeneratorForm() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [copied, setCopied] = useState<number | null>(null);
-  const [tab, setTab] = useState<"generate" | "checks">("generate");
+  const [tab, setTab] = useState<keyof typeof TABS>("generate");
   const [running, setRunning] = useState<string | null>(null);
   const [checks, setChecks] = useState<Record<string, { passed?: boolean; failureReasons?: string[]; error?: string }>>({});
   const requestRef = useRef<AbortController | null>(null);
-  const currentInput = JSON.stringify({ post, context, authorContext, samples, platform, provider, model });
+  const currentInput = JSON.stringify({ post, context, authorContext, samples, facts, platform, provider, model });
   const result = resultInput === currentInput ? stored : null;
 
   useEffect(() => {
@@ -43,28 +49,34 @@ export default function PostGeneratorForm() {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setSamples(value.samples.slice(0, 3500));
         setRecent(value.recent.filter((s: unknown) => typeof s === "string" && s.length <= 700).slice(0, 12));
+        if (typeof value.facts === "string") setFacts(value.facts.slice(0, 1500));
       }
     } catch { /* Storage may be disabled; generation still works. */ }
     return () => requestRef.current?.abort();
   }, []);
 
-  function savePreferences(nextSamples: string, nextRecent: string[]) {
-    try { localStorage.setItem(storageKey, JSON.stringify({ samples: nextSamples, recent: nextRecent })); }
+  function savePreferences(nextSamples: string, nextRecent: string[], nextFacts = facts) {
+    try { localStorage.setItem(storageKey, JSON.stringify({ samples: nextSamples, recent: nextRecent, facts: nextFacts })); }
     catch { setNotice("Browser storage is unavailable. Your preferences work for this session."); }
+  }
+  function remember(text: string) {
+    const next = [text, ...recent.filter(c => c !== text)].slice(0, 12);
+    setRecent(next);
+    savePreferences(samples, next);
   }
   async function copy(text: string, id: number) {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(id);
-      const next = [text, ...recent.filter(c => c !== text)].slice(0, 12);
-      setRecent(next);
-      savePreferences(samples, next);
+      remember(text);
+      // Ready for the follow-up: if they answer, the reply tab already has the post and this comment.
+      setThread({ ...emptyThread, post, myComment: text });
       setNotice("Copied. Nothing has been posted.");
     } catch { setNotice("Clipboard access failed. Select the comment text and copy it manually."); }
   }
   async function generate(event: FormEvent) {
     event.preventDefault();
-    const voiceSamples = samples.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
+    const voiceSamples = splitSamples(samples);
     if (voiceSamples.length > 5 || voiceSamples.some(s => s.length > 700)) {
       setError("Use up to five writing samples, separated by a blank line, with at most 700 characters each.");
       return;
@@ -76,7 +88,7 @@ export default function PostGeneratorForm() {
     try {
       const response = await fetch("/api/generate", {
         method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal,
-        body: JSON.stringify({ post, context, authorContext, voiceSamples, recentComments: recent, platform, provider, model: provider === "collaborative" ? undefined : model }),
+        body: JSON.stringify({ post, context, authorContext, profileFacts: facts, voiceSamples, recentComments: recent, platform, provider, model: provider === "collaborative" ? undefined : model }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not generate comments.");
@@ -99,9 +111,9 @@ export default function PostGeneratorForm() {
 
   return <div className="space-y-6">
     <div className="flex gap-2" aria-label="Workspace">
-      {(["generate", "checks"] as const).map(item => <button key={item} type="button" onClick={() => setTab(item)}
+      {(Object.keys(TABS) as Array<keyof typeof TABS>).map(item => <button key={item} type="button" onClick={() => setTab(item)}
         aria-pressed={tab === item} className={`rounded-lg px-4 py-2 text-sm font-semibold cursor-pointer ${tab === item ? "bg-indigo-600 text-white" : "bg-white text-slate-600 border border-slate-200"}`}>
-        {item === "generate" ? "Your comments" : "Quality checks"}
+        {TABS[item]}
       </button>)}
     </div>
 
@@ -122,16 +134,21 @@ export default function PostGeneratorForm() {
               placeholder="Have a view already? Add it here. Otherwise, just the post is enough." />
           </div>
           <details className="rounded-xl border border-slate-200 p-4">
-            <summary className="cursor-pointer text-sm font-semibold">Make it sound more like you</summary>
+            <summary className="cursor-pointer text-sm font-semibold">Make it sound more like you{facts.trim() ? "" : " · add your facts once"}</summary>
             <div className="space-y-4 mt-4">
+              <div><label htmlFor="facts" className="block text-sm font-medium mb-2">True facts about you <span className="font-normal text-slate-400">· saved, used only when they fit</span></label>
+                <textarea id="facts" value={facts} maxLength={1500} rows={4} onChange={e => setFacts(e.target.value)} onBlur={() => savePreferences(samples, recent)} className={inputClass}
+                  placeholder={"One real fact per line, in your own words. For example:\nI'm a software engineering student.\nI started a small web studio this year.\nI built websites for a friend's marketing agency."} />
+                <p className="text-xs text-slate-500 mt-2">A comment can only mention your experience if it is written here or in “Your take”. Nothing else about you is ever made up.</p>
+              </div>
               <div><label htmlFor="samples" className="block text-sm font-medium mb-2">A few comments you have written</label>
                 <textarea id="samples" value={samples} maxLength={3500} rows={4} onChange={e => setSamples(e.target.value)} className={inputClass} placeholder="Separate up to five examples with a blank line. These guide the style, not claims about your experience." />
               </div>
               <div><label htmlFor="author" className="block text-sm font-medium mb-2">Who are you replying to?</label>
                 <input id="author" value={authorContext} maxLength={1000} onChange={e => setAuthorContext(e.target.value)} className={inputClass} placeholder="e.g. A founder I haven't spoken with yet; keep it friendly and direct." />
               </div>
-              <p className="text-xs text-slate-500">Writing samples and your last 12 copied comments are saved in this browser and sent with requests to match your voice and avoid repetition.</p>
-              <button type="button" onClick={() => { setSamples(""); setRecent([]); savePreferences("", []); setNotice("Saved writing samples and comment history cleared."); }} className="text-xs text-indigo-700 underline cursor-pointer">Clear saved samples and history ({recent.length} comments)</button>
+              <p className="text-xs text-slate-500">Writing samples and your last 12 copied comments are saved in this browser, along with your facts, and sent with requests to match your voice and avoid repetition.</p>
+              <button type="button" onClick={() => { setSamples(""); setRecent([]); savePreferences("", []); setNotice("Saved writing samples and comment history cleared. Your facts were kept."); }} className="text-xs text-indigo-700 underline cursor-pointer">Clear saved samples and history ({recent.length} comments)</button>
             </div>
           </details>
           <details className="text-sm">
@@ -159,6 +176,7 @@ export default function PostGeneratorForm() {
           <p className="text-sm leading-relaxed text-slate-800">{result.analysis.coreIdea}</p>
           <p className="text-xs text-slate-500 mt-2">{result.analysis.tone} · {result.analysis.intent}</p>
         </div>}
+        {result.analysis?.caution && <p role="note" className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900"><span className="font-semibold">Careful with this one: </span>{result.analysis.caution} Skipping, or just reacting, is a fine choice.</p>}
         <div><h2 className="text-xl font-bold">{result.status === "PASS" ? "Your top 3 comments" : "This set needs more context or another try"}</h2>
           <p className="text-sm text-slate-500 mt-1">{result.message}</p></div>
         {result.comments.map((comment, index) => <article key={comment.id} className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">
@@ -178,7 +196,9 @@ export default function PostGeneratorForm() {
           {result.stepDebugLogs.map(step => <details key={step.stepIndex} className="mt-3"><summary className="cursor-pointer">{step.stepName}</summary><pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-100 p-3">{JSON.stringify(step.parsedOutput, null, 2)}</pre></details>)}
         </details>
       </section>}
-    </> : <section className="space-y-4">
+    </> : tab === "reply" ? <ReplyForm thread={thread} onThreadChange={setThread} platform={platform} provider={provider} model={model}
+        voiceSamples={splitSamples(samples).slice(0, 5)} recentComments={recent} profileFacts={facts} authorContext={authorContext} onCopied={remember} />
+    : <section className="space-y-4">
       <h2 className="text-xl font-bold">Quality checks</h2>
       <p className="text-sm text-slate-500">Live checks use your configured model providers. They check the three-comment contract and review decisions; read the drafts to judge their quality.</p>
       {EVAL_TEST_CASES.map(tc => <article key={tc.id} className="rounded-xl border border-slate-200 bg-white p-5 space-y-3">

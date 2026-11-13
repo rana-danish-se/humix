@@ -26,12 +26,16 @@ export interface WritingContext {
   voiceSamples?: string[];
   recentComments?: string[];
   authorContext?: string;
+  // Standing true facts the user saved about themselves. Evidence for firsthand claims.
+  profileFacts?: string;
 }
 export interface PostAnalysisResult {
   coreIdea: string;
   tone: string;
   intent: string;
   missingContext: string;
+  // Short warning for sensitive posts (loss, layoffs, illness, politics, heated disputes).
+  caution?: string;
 }
 export const COMMENT_ANGLES = ["question", "insight", "practical", "challenge", "humor", "support"] as const;
 export type CommentAngle = typeof COMMENT_ANGLES[number];
@@ -94,6 +98,45 @@ export interface PipelineResult {
     modelUsed?: string;
     criticProviderUsed?: LLMProvider;
     criticModelUsed?: string;
+    executionTimeMs: number;
+    attempts: number;
+  };
+}
+
+export const REPLY_MOVES = ["answer", "thanks", "question", "add", "agree", "lighten"] as const;
+export type ReplyMove = typeof REPLY_MOVES[number];
+export interface ReplyOption {
+  id: number;
+  move: ReplyMove;
+  text: string;
+  anchor: string;
+  note: string;
+}
+export interface ReplyAnalysis {
+  gist: string;
+  tone: string;
+  likeIsEnough: boolean;
+  // A fact only the user can supply, e.g. when the other person asked about them.
+  needsInput: string;
+  caution: string;
+}
+export interface ReplyThreadInput {
+  post: string;
+  myComment: string;
+  theirReply: string;
+  earlierThread?: string;
+}
+export interface ReplyResult {
+  status: "PASS" | "SKIP" | "REGENERATE";
+  replies: ReplyOption[];
+  analysis?: ReplyAnalysis;
+  message: string;
+  stepDebugLogs: LLMStepDebug[];
+  promptGuard?: { status: "checked" | "unavailable"; isAttack: boolean; score: number };
+  metadata: {
+    platform: PlatformType;
+    providerUsed?: LLMProvider;
+    modelUsed?: string;
     executionTimeMs: number;
     attempts: number;
   };

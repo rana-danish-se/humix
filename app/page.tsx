@@ -15,7 +15,7 @@ export default function Home() {
             Three good ways to reply
           </h1>
           <p className="text-sm font-normal text-slate-600 leading-relaxed">
-            Paste a post. Get the point, compare three different comments, and choose the one you want to say.
+            Paste a post. Get the point, compare three different comments, and choose the one you want to say. When they answer, get your next reply too.
           </p>
         </div>
         <PostGeneratorForm />
